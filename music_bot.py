@@ -52,75 +52,21 @@ COOKIES_FILE = os.path.join(os.path.dirname(__file__), "cookies.txt")
 TRACKS_FILE = os.path.join(os.path.dirname(__file__), "tracks.json")
 SEARCH_CACHE_FILE = os.path.join(os.path.dirname(__file__), "search_cache.json")
 
-# === НАСТРОЙКИ ПЛАТЕЖЕЙ ===
-PAYMENT_PROVIDER_TOKEN = os.getenv("PAYMENT_PROVIDER_TOKEN")
-if not PAYMENT_PROVIDER_TOKEN:
-    raise RuntimeError("Переменная окружения PAYMENT_PROVIDER_TOKEN не установлена")
-
-PAYMENT_AMOUNT = 100  # 1 USD в центах (100 центов = 1 USD)
-PAYMENT_CURRENCY = "USD"
-PAYMENT_TITLE = "Премиум доступ к Music Bot"
-PAYMENT_DESCRIPTION = "Месячная подписка на премиум функции - автоматическая активация (карты Ammer)"
-
-# === НАСТРОЙКИ YOOMONEY ===
-YOOMONEY_CLIENT_ID = os.getenv("YOOMONEY_CLIENT_ID")
-if not YOOMONEY_CLIENT_ID:
-    raise RuntimeError("Переменная окружения YOOMONEY_CLIENT_ID не установлена")
-
-YOOMONEY_CLIENT_SECRET = os.getenv("YOOMONEY_CLIENT_SECRET")
-if not YOOMONEY_CLIENT_SECRET:
-    raise RuntimeError("Переменная окружения YOOMONEY_CLIENT_SECRET не установлена")
-
-YOOMONEY_REDIRECT_URI = os.getenv("YOOMONEY_REDIRECT_URI")
-if not YOOMONEY_REDIRECT_URI:
-    raise RuntimeError("Переменная окружения YOOMONEY_REDIRECT_URI не установлена")
-
-YOOMONEY_ACCOUNT = os.getenv("YOOMONEY_ACCOUNT")
-if not YOOMONEY_ACCOUNT:
-    raise RuntimeError("Переменная окружения YOOMONEY_ACCOUNT не установлена")
-
-YOOMONEY_PAYMENT_AMOUNT = 100.0  # Сумма в рублях
-YOOMONEY_ENABLED = True  # Включить/выключить YooMoney
-
-# === НАСТРОЙКИ АВТОМАТИЧЕСКОЙ ОПЛАТЫ ===
-CARD_NUMBER = os.getenv("CARD_NUMBER")  # пример: XXXX XXXX XXXX XXXX
-if not CARD_NUMBER:
-    raise RuntimeError("Переменная окружения CARD_NUMBER не установлена")
-
-TON_WALLET = os.getenv("TON_WALLET")
-if not TON_WALLET:
-    raise RuntimeError("Переменная окружения TON_WALLET не установлена")
-
-PAYMENT_AMOUNT_USD = os.getenv("PAYMENT_AMOUNT_USD")
-if not PAYMENT_AMOUNT_USD:
-    raise RuntimeError("Переменная окружения PAYMENT_AMOUNT_USD не установлена")
-
-PAYMENT_AMOUNT_USDT = os.getenv("PAYMENT_AMOUNT_USDT")
-if not PAYMENT_AMOUNT_USDT:
-    raise RuntimeError("Переменная окружения PAYMENT_AMOUNT_USDT не установлена")
-
-TON_API_KEY = os.getenv("TON_API_KEY")
-if not TON_API_KEY:
-    raise RuntimeError("Переменная окружения TON_API_KEY не установлена")
+# === НАСТРОЙКИ БОТА ===
+# Платежные системы отключены для упрощения
 
 # === НАСТРОЙКИ АВТОМАТИЧЕСКОЙ ОЧИСТКИ ===
 AUTO_CLEANUP_ENABLED = False  # Включить/выключить автоматическую очистку
 AUTO_CLEANUP_DELAY = 1.0  # Задержка в секундах перед удалением файла после отправки
 CLEANUP_LOGGING = True  # Логирование операций очистки
 
-# === НАСТРОЙКИ ПРЕМИУМ МОНИТОРИНГА ===
-PREMIUM_NOTIFICATION_INTERVAL = 604800  # 7 дней в секундах (напоминания о премиуме)
-PREMIUM_GRACE_PERIOD = 259200  # 3 дня в секундах (грация после отмены премиума)
-PREMIUM_EXPIRY_WARNING = 86400  # 1 день в секундах (предупреждение об истечении)
-
+# === НАСТРОЙКИ БОТА ===
 ARTIST_FACTS_FILE = os.path.join(os.path.dirname(__file__), "artist_facts.json")
-PREMIUM_USERS_FILE = os.path.join(os.path.dirname(__file__), "premium_users.json")
 SEARCH_CACHE_TTL = 600
 PAGE_SIZE = 10  # для постраничной навигации
 
-# === НАСТРОЙКИ ПРИОРИТЕТНОЙ ОЧЕРЕДИ ===
-PREMIUM_QUEUE = PriorityQueue()  # Приоритетная очередь для премиум пользователей
-REGULAR_QUEUE = deque()  # Обычная очередь для обычных пользователей
+# === НАСТРОЙКИ ЗАГРУЗОК ===
+REGULAR_QUEUE = deque()  # Очередь для загрузок
 MAX_CONCURRENT_DOWNLOADS = 3  # Максимальное количество одновременных загрузок
 ACTIVE_DOWNLOADS = 0  # Счетчик активных загрузок
 

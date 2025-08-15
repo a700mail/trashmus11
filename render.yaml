@@ -14,25 +14,5 @@ services:
         sync: false
       - key: BOT_TOKEN
         sync: false
-      - key: PAYMENT_PROVIDER_TOKEN
-        sync: false
-      - key: YOOMONEY_CLIENT_ID
-        sync: false
-      - key: YOOMONEY_CLIENT_SECRET
-        sync: false
-      - key: YOOMONEY_ACCOUNT
-        sync: false
-      - key: YOOMONEY_REDIRECT_URI
-        sync: false
-      - key: CARD_NUMBER
-        sync: false
-      - key: TON_WALLET
-        sync: false
-      - key: TON_API_KEY
-        sync: false
-      - key: PAYMENT_AMOUNT_USD
-        sync: false
-      - key: PAYMENT_AMOUNT_USDT
-        sync: false
       - key: WEBHOOK_URL
         sync: false
