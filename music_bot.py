@@ -2610,6 +2610,9 @@ async def search_by_artist(message: types.Message, state: FSMContext):
         random.shuffle(filtered_tracks)
         selected_tracks = filtered_tracks[:10]
         
+        # Сообщаем пользователю о количестве треков
+        await message.answer(f"🎵 Найдено {len(selected_tracks)} треков исполнителя '{artist}'. Скачиваю...")
+        
         # Отправляем треки как аудиофайлы
         await send_tracks_as_audio(user_id, selected_tracks, None)
         
