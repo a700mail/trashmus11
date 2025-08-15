@@ -3168,7 +3168,7 @@ async def send_search_results(chat_id, results):
         # Отправляем результаты с минимальным текстом (Telegram не позволяет пустые сообщения)
         await bot.send_message(
             chat_id, 
-            f"🐻‍❄️ Найдено {len(final_results)} результатов (5 YouTube + 5 SoundCloud)", 
+            "🐻‍❄️ Результаты", 
             reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
         )
         
