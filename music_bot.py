@@ -4140,16 +4140,40 @@ async def for_you_section(callback: types.CallbackQuery):
                             continue
                         
                         # Отправляем красивое аудио с изображением
-                        success = await send_beautiful_audio(
-                            message=types.Message(chat=types.Chat(id=user_id), from_user=types.User(id=user_id)),
-                            audio_file_path=filename,
-                            title=track.get('title', 'Неизвестный трек'),
-                            performer=track.get('uploader', 'Неизвестный исполнитель'),
-                            duration=track.get('duration', 0),
-                            original_url=track.get('original_url', '')
-                        )
-                        
-                        if not success:
+                        try:
+                            # Пытаемся получить изображение
+                            thumbnail_path = None
+                            original_url = track.get('original_url', '')
+                            
+                            if original_url and ('youtube.com' in original_url or 'youtu.be' in original_url):
+                                # Для YouTube получаем превью
+                                thumbnail_path = await get_youtube_thumbnail(original_url)
+                            else:
+                                # Пытаемся извлечь из аудио файла
+                                thumbnail_path = await extract_audio_thumbnail(filename)
+                            
+                            # Отправляем аудио с метаданными
+                            await bot.send_audio(
+                                chat_id=user_id,
+                                audio=types.FSInputFile(filename),
+                                title=track.get('title', 'Неизвестный трек'),
+                                performer=track.get('uploader', 'Неизвестный исполнитель'),
+                                duration=track.get('duration', 0),
+                                thumb=types.FSInputFile(thumbnail_path) if thumbnail_path and os.path.exists(thumbnail_path) else None
+                            )
+                            
+                            logging.info(f"✅ Красивое аудио отправлено: {track.get('title', 'Неизвестный трек')}")
+                            
+                            # Удаляем временный файл изображения
+                            if thumbnail_path and os.path.exists(thumbnail_path):
+                                try:
+                                    os.remove(thumbnail_path)
+                                    logging.info(f"🗑️ Временное изображение удалено: {thumbnail_path}")
+                                except Exception as e:
+                                    logging.warning(f"⚠️ Не удалось удалить временное изображение: {e}")
+                                    
+                        except Exception as e:
+                            logging.error(f"❌ Ошибка отправки красивого аудио: {e}")
                             # Fallback: обычная отправка
                             await bot.send_audio(
                                 chat_id=user_id,
@@ -4461,16 +4485,40 @@ async def send_tracks_as_audio(user_id: str, tracks: list, status_msg: types.Mes
                     
                     if temp_file_path and os.path.exists(temp_file_path):
                         # Отправляем красивое аудио с изображением
-                        success = await send_beautiful_audio(
-                            message=types.Message(chat=types.Chat(id=user_id), from_user=types.User(id=user_id)),
-                            audio_file_path=temp_file_path,
-                            title=track.get('title', 'Неизвестный трек'),
-                            performer=track.get('uploader', 'Неизвестный исполнитель'),
-                            duration=track.get('duration', 0),
-                            original_url=track.get('original_url', '')
-                        )
-                        
-                        if not success:
+                        try:
+                            # Пытаемся получить изображение
+                            thumbnail_path = None
+                            original_url = track.get('original_url', '')
+                            
+                            if original_url and ('youtube.com' in original_url or 'youtu.be' in original_url):
+                                # Для YouTube получаем превью
+                                thumbnail_path = await get_youtube_thumbnail(original_url)
+                            else:
+                                # Пытаемся извлечь из аудио файла
+                                thumbnail_path = await extract_audio_thumbnail(temp_file_path)
+                            
+                            # Отправляем аудио с метаданными
+                            await bot.send_audio(
+                                chat_id=user_id,
+                                audio=types.FSInputFile(temp_file_path),
+                                title=track.get('title', 'Неизвестный трек'),
+                                performer=track.get('uploader', 'Неизвестный исполнитель'),
+                                duration=track.get('duration', 0),
+                                thumb=types.FSInputFile(thumbnail_path) if thumbnail_path and os.path.exists(thumbnail_path) else None
+                            )
+                            
+                            logging.info(f"✅ Красивое аудио отправлено: {track.get('title', 'Неизвестный трек')}")
+                            
+                            # Удаляем временный файл изображения
+                            if thumbnail_path and os.path.exists(thumbnail_path):
+                                try:
+                                    os.remove(thumbnail_path)
+                                    logging.info(f"🗑️ Временное изображение удалено: {thumbnail_path}")
+                                except Exception as e:
+                                    logging.warning(f"⚠️ Не удалось удалить временное изображение: {e}")
+                                    
+                        except Exception as e:
+                            logging.error(f"❌ Ошибка отправки красивого аудио: {e}")
                             # Fallback: обычная отправка
                             await bot.send_audio(
                                 chat_id=user_id,
@@ -4698,9 +4746,40 @@ async def play_track(callback: types.CallbackQuery):
                 temp_file_path = await download_track_to_temp(user_id, original_url, title)
                 
                 if temp_file_path and os.path.exists(temp_file_path):
-                    # Отправляем MP3 пользователю
-                    await callback.message.answer_audio(types.FSInputFile(temp_file_path), title=title)
-                    logging.info(f"✅ Трек отправлен: {title}")
+                    # Отправляем красивое аудио с изображением
+                    try:
+                        # Пытаемся получить изображение
+                        thumbnail_path = None
+                        
+                        if original_url and ('youtube.com' in original_url or 'youtu.be' in original_url):
+                            # Для YouTube получаем превью
+                            thumbnail_path = await get_youtube_thumbnail(original_url)
+                        else:
+                            # Пытаемся извлечь из аудио файла
+                            thumbnail_path = await extract_audio_thumbnail(temp_file_path)
+                        
+                        # Отправляем аудио с метаданными
+                        await callback.message.answer_audio(
+                            types.FSInputFile(temp_file_path), 
+                            title=title,
+                            thumb=types.FSInputFile(thumbnail_path) if thumbnail_path and os.path.exists(thumbnail_path) else None
+                        )
+                        
+                        logging.info(f"✅ Красивое аудио отправлено: {title}")
+                        
+                        # Удаляем временный файл изображения
+                        if thumbnail_path and os.path.exists(thumbnail_path):
+                            try:
+                                os.remove(thumbnail_path)
+                                logging.info(f"🗑️ Временное изображение удалено: {thumbnail_path}")
+                            except Exception as e:
+                                logging.warning(f"⚠️ Не удалось удалить временное изображение: {e}")
+                                
+                    except Exception as e:
+                        logging.error(f"❌ Ошибка отправки красивого аудио: {e}")
+                        # Fallback: обычная отправка
+                        await callback.message.answer_audio(types.FSInputFile(temp_file_path), title=title)
+                        logging.info(f"✅ Аудио отправлено (fallback): {title}")
                     
                     # Удаляем временный файл после успешной отправки
                     await delete_temp_file(temp_file_path)
@@ -4794,11 +4873,35 @@ async def download_all_tracks(callback: types.CallbackQuery):
                     temp_file_path = await download_track_to_temp(user_id, original_url, title)
                     
                     if temp_file_path and os.path.exists(temp_file_path):
-                        # Отправляем MP3 пользователю
+                        # Отправляем красивое аудио с изображением
                         try:
-                            await callback.message.answer_audio(types.FSInputFile(temp_file_path), title=title)
+                            # Пытаемся получить изображение
+                            thumbnail_path = None
+                            
+                            if original_url and ('youtube.com' in original_url or 'youtu.be' in original_url):
+                                # Для YouTube получаем превью
+                                thumbnail_path = await get_youtube_thumbnail(original_url)
+                            else:
+                                # Пытаемся извлечь из аудио файла
+                                thumbnail_path = await extract_audio_thumbnail(temp_file_path)
+                            
+                            # Отправляем аудио с метаданными
+                            await callback.message.answer_audio(
+                                types.FSInputFile(temp_file_path), 
+                                title=title,
+                                thumb=types.FSInputFile(thumbnail_path) if thumbnail_path and os.path.exists(thumbnail_path) else None
+                            )
+                            
                             success_count += 1
-                            logging.info(f"✅ Трек отправлен: {title}")
+                            logging.info(f"✅ Красивое аудио отправлено: {title}")
+                            
+                            # Удаляем временный файл изображения
+                            if thumbnail_path and os.path.exists(thumbnail_path):
+                                try:
+                                    os.remove(thumbnail_path)
+                                    logging.info(f"🗑️ Временное изображение удалено: {thumbnail_path}")
+                                except Exception as e:
+                                    logging.warning(f"⚠️ Не удалось удалить временное изображение: {e}")
                             
                             # Удаляем временный файл после успешной отправки
                             await delete_temp_file(temp_file_path)
