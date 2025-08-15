@@ -188,21 +188,18 @@ def keep_alive():
     """Keep alive функция для предотвращения засыпания Render"""
     while True:
         try:
-            # Логируем keep alive каждые 10 секунд
-            logger.info("💓 Keep alive heartbeat - бот активен")
-            
             # Делаем запрос к собственному health endpoint
             try:
                 response = requests.get("http://localhost:10000/health", timeout=5)
                 if response.status_code == 200:
-                    logger.info("✅ Health check успешен")
+                    logger.info("💓 Keep alive - бот активен")
                 else:
                     logger.warning(f"⚠️ Health check вернул статус: {response.status_code}")
             except Exception as e:
                 logger.warning(f"⚠️ Health check не удался: {e}")
             
-            # Ждем 25 секунд до следующего keep alive
-            time.sleep(25)
+            # Ждем 30 секунд до следующего keep alive
+            time.sleep(30)
             
         except Exception as e:
             logger.error(f"❌ Ошибка в keep alive: {e}")

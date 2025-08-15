@@ -103,11 +103,15 @@ REGULAR_QUEUE = deque()  # Обычная очередь для обычных �
 # Глобальная переменная для хранения последнего webhook обновления
 last_webhook_update = None
 webhook_update_queue = asyncio.Queue()
-MAX_CONCURRENT_DOWNLOADS = 3  # Максимальное количество одновременных загрузок
+
+# === ОПТИМИЗАЦИЯ ПАРАЛЛЕЛЬНЫХ ЗАГРУЗОК ===
+MAX_CONCURRENT_DOWNLOADS = 5  # Увеличили количество одновременных загрузок
+MAX_CONCURRENT_DOWNLOADS_PER_USER = 2  # Максимум 2 загрузки на пользователя
 ACTIVE_DOWNLOADS = 0  # Счетчик активных загрузок
+user_download_semaphores = {}  # Семафоры для каждого пользователя
 
 # === ГЛОБАЛЬНЫЕ ОБЪЕКТЫ ДЛЯ ЗАГРУЗОК ===
-yt_executor = ThreadPoolExecutor(max_workers=5, thread_name_prefix="yt_downloader")
+yt_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="yt_downloader")  # Увеличили количество потоков
 download_semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
 
 # === ОТСЛЕЖИВАНИЕ ФОНОВЫХ ЗАДАЧ ===
@@ -136,6 +140,33 @@ logging.basicConfig(
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 os.makedirs(CACHE_DIR, exist_ok=True)
+
+# === ФУНКЦИИ ДЛЯ ОПТИМИЗАЦИИ ЗАГРУЗОК ===
+
+def get_user_download_semaphore(user_id: str) -> asyncio.Semaphore:
+    """Получает или создает семафор для конкретного пользователя"""
+    if user_id not in user_download_semaphores:
+        user_download_semaphores[user_id] = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS_PER_USER)
+    return user_download_semaphores[user_id]
+
+async def cleanup_user_semaphores():
+    """Очищает неиспользуемые семафоры пользователей"""
+    while True:
+        try:
+            await asyncio.sleep(300)  # Каждые 5 минут
+            current_time = time.time()
+            
+            # Очищаем семафоры пользователей, которые не использовались более часа
+            users_to_remove = []
+            for user_id, semaphore in user_download_semaphores.items():
+                if hasattr(semaphore, '_last_used') and current_time - semaphore._last_used > 3600:
+                    users_to_remove.append(user_id)
+            
+            for user_id in users_to_remove:
+                del user_download_semaphores[user_id]
+                
+        except Exception as e:
+            await asyncio.sleep(60)
 
 # === УНИВЕРСАЛЬНАЯ СИСТЕМА УПРАВЛЕНИЯ ФОНОВЫМИ ЗАДАЧАМИ ===
 
@@ -2060,8 +2091,6 @@ async def back_to_main_menu(callback: types.CallbackQuery):
         await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
         return
     
-    logging.info(f"🔙 Пользователь {user_id} возвращается в главное меню")
-    
     try:
         # Удаляем предыдущее inline-сообщение
         await callback.message.delete()
@@ -2072,7 +2101,6 @@ async def back_to_main_menu(callback: types.CallbackQuery):
             reply_markup=main_menu
         )
     except Exception as e:
-        logging.error(f"❌ Ошибка в back_to_main_menu: {e}")
         # Если что-то пошло не так, просто отправляем главное меню
         try:
             await callback.message.answer_photo(
@@ -2080,7 +2108,6 @@ async def back_to_main_menu(callback: types.CallbackQuery):
                 reply_markup=main_menu
             )
         except Exception as photo_error:
-            logging.error(f"❌ Ошибка отправки фото: {photo_error}")
             await callback.message.answer("🐻 Главное меню", reply_markup=main_menu)
 
 # === Команды ===
@@ -2111,8 +2138,6 @@ async def by_artist_section(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
         return
     
-    logging.info(f"🌨️ Пользователь {user_id} открыл раздел 'По исполнителям'")
-    
     try:
         # Удаляем предыдущее сообщение для чистоты чата
         await callback.message.delete()
@@ -2124,7 +2149,6 @@ async def by_artist_section(callback: types.CallbackQuery, state: FSMContext):
         await callback.message.answer("🌨️ Введите исполнителя", reply_markup=back_button)
         
     except Exception as e:
-        logging.error(f"❌ Ошибка в by_artist_section для пользователя {user_id}: {e}")
         await callback.answer("❌ Произошла ошибка. Попробуйте еще раз.", show_alert=True)
 
 @dp.callback_query(F.data == "premium_features")
@@ -2482,10 +2506,8 @@ async def ask_track_name(callback: types.CallbackQuery, state: FSMContext):
         )
     except Exception as e:
         # Если не удалось отправить фото, отправляем обычное сообщение
-        logging.error(f"❌ Ошибка отправки фото: {e}")
         await callback.message.edit_text("🎵Введите название", reply_markup=back_button)
     
-    await callback.answer()
     await state.set_state(SearchStates.waiting_for_search)
 
 @dp.callback_query(F.data == "back_to_main")
@@ -2515,7 +2537,6 @@ async def back_from_track_search_handler(callback: types.CallbackQuery, state: F
         )
     except Exception as e:
         # Если не удалось отправить фото, отправляем обычное сообщение
-        logging.error(f"❌ Ошибка отправки фото: {e}")
         await callback.message.edit_text("🔙 Возврат в главное меню", reply_markup=main_menu)
 
 
@@ -2531,8 +2552,6 @@ async def search_by_artist(message: types.Message, state: FSMContext):
     user_id = str(message.from_user.id)
     await state.clear()
 
-    logging.info(f"🌨️ === ПОИСК ПО ИСПОЛНИТЕЛЮ === Поиск треков исполнителя '{artist}' для пользователя {user_id}")
-
     # Проверяем, что запрос не пустой
     if not artist:
         await message.answer("❌ Пожалуйста, введите имя исполнителя.", reply_markup=main_menu)
@@ -2545,9 +2564,7 @@ async def search_by_artist(message: types.Message, state: FSMContext):
                 search_youtube_artist_improved(artist),
                 timeout=30.0
             )
-            logging.info(f"🌨️ YouTube результаты для '{artist}': {len(youtube_results.get('entries', [])) if youtube_results else 0}")
         except Exception as e:
-            logging.error(f"❌ Ошибка поиска YouTube для исполнителя '{artist}': {e}")
             youtube_results = None
         
         if not youtube_results or not youtube_results.get('entries'):
@@ -2561,17 +2578,14 @@ async def search_by_artist(message: types.Message, state: FSMContext):
                 # Проверяем длительность - минимум 60 секунд
                 duration = entry.get('duration', 0)
                 if duration < 60:
-                    logging.info(f"🌨️ Пропускаем трек '{entry.get('title')}' - слишком короткий ({duration}с)")
                     continue
                 
                 # Проверяем максимальную длительность - максимум 15 минут
                 if duration > 900:
-                    logging.info(f"🌨️ Пропускаем трек '{entry.get('title')}' - слишком длинный ({duration}с)")
                     continue
                 
                 entry['source'] = 'yt'
                 filtered_tracks.append(entry)
-                logging.info(f"🌨️ Добавлен трек '{entry.get('title')}' длительностью {duration}с")
         
         if not filtered_tracks:
             await message.answer(f"❄️ Не найдено подходящих треков исполнителя '{artist}' (все треки слишком короткие или длинные).", reply_markup=main_menu)
@@ -2582,13 +2596,10 @@ async def search_by_artist(message: types.Message, state: FSMContext):
         random.shuffle(filtered_tracks)
         selected_tracks = filtered_tracks[:15]
         
-        logging.info(f"🌨️ Найдено {len(selected_tracks)} подходящих треков исполнителя '{artist}'")
-        
         # Отправляем треки как аудиофайлы
         await send_tracks_as_audio(user_id, selected_tracks, None)
         
     except Exception as e:
-        logging.error(f"❌ Ошибка поиска по исполнителю '{artist}': {e}")
         await message.answer("❌ Произошла ошибка при поиске. Попробуйте еще раз.", reply_markup=main_menu)
 
 @dp.message(SearchStates.waiting_for_search, F.text)
@@ -2597,8 +2608,6 @@ async def search_music(message: types.Message, state: FSMContext):
     user_id = str(message.from_user.id)
     start_time = time.time()  # Добавляем отсчет времени
     await state.clear()
-
-    logging.info(f"🔍 Поиск музыки для пользователя {user_id}: '{query}'")
 
     # Проверяем, что запрос не пустой
     if not query:
@@ -2622,10 +2631,8 @@ async def search_music(message: types.Message, state: FSMContext):
         # Выполняем поиск на YouTube и SoundCloud параллельно
         async def search_youtube(q):
             try:
-                logging.info(f"🔍 YouTube: начинаем поиск для запроса '{q}'")
                 def search_block(q):
                     try:
-                        logging.info(f"🔍 YouTube: search_block вызван для '{q}'")
                         ydl_opts = {
                             'format': 'bestaudio/best',
                             'noplaylist': True,
@@ -2638,37 +2645,22 @@ async def search_music(message: types.Message, state: FSMContext):
                         # Проверяем существование cookies файла
                         if os.path.exists(COOKIES_FILE):
                             ydl_opts['cookiefile'] = COOKIES_FILE
-                            logging.info(f"🍪 Используем cookies файл: {COOKIES_FILE}")
-                        else:
-                            logging.warning("⚠️ Cookies файл не найден, поиск может быть ограничен")
                         
-                        logging.info(f"🔍 YouTube: создаем YoutubeDL с опциями {ydl_opts}")
                         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                             search_query = f"ytsearch5:{q}"  # Оптимально: 5 лучших результатов
-                            logging.info(f"🔍 YouTube: вызываем extract_info для '{search_query}'")
                             result = ydl.extract_info(search_query, download=False)
-                            logging.info(f"🔍 YouTube: extract_info завершен, результат: {type(result)}")
                             if not result:
-                                logging.warning(f"⚠️ Пустой результат поиска YouTube для запроса: '{q}'")
                                 return None
-                            logging.info(f"🔍 YouTube: найдено результатов: {len(result.get('entries', [])) if result and 'entries' in result else 0}")
                             return result
                     except Exception as search_error:
-                        logging.error(f"❌ Ошибка в search_block YouTube для запроса '{q}': {search_error}")
-                        import traceback
-                        logging.error(f"📋 Traceback:\n{traceback.format_exc()}")
                         return None
                 
                 result = await asyncio.wait_for(
                     asyncio.to_thread(search_block, q),
                     timeout=12.0  # Еще уменьшили таймаут для ускорения
                 )
-                logging.info(f"🔍 YouTube: поиск завершен, результат: {type(result)}")
                 return result
             except Exception as e:
-                logging.error(f"❌ Ошибка поиска YouTube: {e}")
-                import traceback
-                logging.error(f"📋 Traceback:\n{traceback.format_exc()}")
                 return None
         
         # Запускаем поиск на обеих платформах параллельно с таймаутом
@@ -2681,9 +2673,7 @@ async def search_music(message: types.Message, state: FSMContext):
                 asyncio.gather(youtube_task, soundcloud_task, return_exceptions=True),
                 timeout=18.0
             )
-            logging.info(f"🔍 Поиск завершен за {time.time() - start_time:.2f}с")
         except asyncio.TimeoutError:
-            logging.warning(f"⚠️ Таймаут поиска для запроса '{query}', отменяем задачи")
             youtube_task.cancel()
             soundcloud_task.cancel()
             
@@ -2694,8 +2684,6 @@ async def search_music(message: types.Message, state: FSMContext):
             except:
                 youtube_info = None
                 soundcloud_results = None
-            
-            logging.info(f"🔍 Результаты после таймаута: YouTube={type(youtube_info)}, SoundCloud={type(soundcloud_results)}")
         
         # Обрабатываем результаты YouTube
         logging.info(f"🔍 Обрабатываем результаты YouTube: {type(youtube_info)}")
@@ -2713,18 +2701,17 @@ async def search_music(message: types.Message, state: FSMContext):
                         # Добавляем источник
                         result['source'] = 'yt'
                         youtube_results.append(result)
-                        logging.info(f"✅ YouTube результат {i+1} добавлен: {result.get('title')}")
                     else:
-                        logging.warning(f"⚠️ YouTube результат {i+1} пропущен: {result}")
+                        pass
             else:
-                logging.warning("⚠️ YouTube: нет entries в результатах")
+                pass
         else:
-            logging.warning("⚠️ YouTube: youtube_info пустой или None")
+            pass
         
         # Обрабатываем результаты SoundCloud
         soundcloud_processed = []
         if isinstance(soundcloud_results, Exception):
-            logging.error(f"❌ Ошибка поиска SoundCloud: {soundcloud_results}")
+            pass
         elif soundcloud_results:
             for result in soundcloud_results:
                 if result and result.get('url') and result.get('title'):
@@ -2733,13 +2720,9 @@ async def search_music(message: types.Message, state: FSMContext):
                     soundcloud_processed.append(result)
         
         # Объединяем результаты
-        logging.info(f"🔍 Объединяем результаты: YouTube {len(youtube_results)}, SoundCloud {len(soundcloud_processed)}")
         all_results = youtube_results + soundcloud_processed
-        logging.info(f"🔍 Всего результатов после объединения: {len(all_results)}")
         
         if not all_results:
-            logging.warning(f"🔍 Нет результатов для запроса '{query}', пробуем только YouTube")
-            
             # Если обе платформы не дали результатов, пробуем только YouTube
             try:
                 youtube_only = await asyncio.wait_for(
@@ -2754,25 +2737,20 @@ async def search_music(message: types.Message, state: FSMContext):
                             youtube_results.append(result)
                     
                     if youtube_results:
-                        logging.info(f"🔍 YouTube-only поиск дал {len(youtube_results)} результатов")
                         all_results = youtube_results[:20]
                     else:
-                        logging.warning(f"🔍 YouTube-only поиск не дал валидных результатов")
                         await search_msg.delete()
                         await message.answer("❄️ Ничего не нашёл. Попробуйте изменить запрос.", reply_markup=main_menu)
                         return
                 else:
-                    logging.warning(f"🔍 YouTube-only поиск не дал результатов")
                     await search_msg.delete()
                     await message.answer("❄️ Ничего не нашёл. Попробуйте изменить запрос.", reply_markup=main_menu)
                     return
             except asyncio.TimeoutError:
-                logging.warning(f"⚠️ Таймаут YouTube-only поиска для запроса '{query}'")
                 await search_msg.delete()
                 await message.answer("❄️ Поиск занял слишком много времени. Попробуйте еще раз.", reply_markup=main_menu)
                 return
             except Exception as e:
-                logging.error(f"❌ Ошибка YouTube-only поиска: {e}")
                 await search_msg.delete()
                 await message.answer("❄️ Ничего не нашёл. Попробуйте изменить запрос.", reply_markup=main_menu)
                 return
@@ -2790,19 +2768,16 @@ async def search_music(message: types.Message, state: FSMContext):
         # Удаляем сообщение "Поиск.." перед отправкой результатов
         await search_msg.delete()
         
-        logging.info(f"🔍 Поиск завершен для '{query}': найдено {len(final_results)} треков")
         set_cached_search(query, final_results)
         await send_search_results(message.chat.id, final_results)
         
     except asyncio.TimeoutError:
-        logging.warning(f"⚠️ Общий таймаут поиска для пользователя {user_id}: {query}")
         try:
             await search_msg.delete()
         except:
             pass
         await message.answer("❄️ Поиск занял слишком много времени. Попробуйте еще раз.", reply_markup=main_menu)
     except Exception as e:
-        logging.exception(f"❌ Критическая ошибка поиска для пользователя {user_id}: {e}")
         try:
             await search_msg.delete()
         except:
@@ -3138,10 +3113,7 @@ async def send_search_results(chat_id, results):
             if len(valid_results) >= 5:
                 break
         
-        logging.info(f"🔍 Найдено {len(valid_results)} валидных треков из {len(results)}")
-        
         if not valid_results:
-            logging.warning(f"🔍 send_search_results: после фильтрации по длительности не осталось валидных треков для чата {chat_id}")
             await bot.send_message(chat_id, "❌ Не найдено подходящих треков для скачивания.", reply_markup=main_menu)
             return
         
@@ -3191,11 +3163,10 @@ async def send_search_results(chat_id, results):
         )
         
     except Exception as e:
-        logging.error(f"❌ Ошибка в send_search_results для чата {chat_id}: {e}")
         try:
             await bot.send_message(chat_id, "❌ Произошла ошибка при отображении результатов поиска.", reply_markup=main_menu)
         except Exception as send_error:
-            logging.error(f"❌ Критическая ошибка отправки сообщения об ошибке: {send_error}")
+            pass
 
 # === Callback: скачивание выбранного из поиска ===
 @dp.callback_query(F.data.startswith("dl:"))
@@ -3221,7 +3192,7 @@ async def download_track(callback: types.CallbackQuery):
         # Проверяем премиум статус пользователя
         is_premium = is_premium_user(user_id, callback.from_user.username)
         
-        # Используем быструю систему очередей
+        # Используем быструю систему очередей с user-specific семафором
         success = await add_to_download_queue_fast(user_id, url, is_premium)
         
         if success:
@@ -3231,10 +3202,8 @@ async def download_track(callback: types.CallbackQuery):
             await callback.answer("❌ Ошибка добавления трека", show_alert=True)
         
     except ValueError as e:
-        logging.error(f"❌ Ошибка парсинга video_id: {e}")
         await callback.answer("❌ Ошибка ID видео.", show_alert=True)
     except Exception as e:
-        logging.error(f"❌ Критическая ошибка в download_track: {e}")
         await callback.answer("❌ Произошла ошибка при запуске загрузки.", show_alert=True)
 
 # === Callback: скачивание SoundCloud трека из поиска ===
@@ -3261,12 +3230,10 @@ async def download_soundcloud_from_search(callback: types.CallbackQuery):
         import urllib.parse
         url = urllib.parse.unquote(encoded_url)
         
-        logging.info(f"🎵 Пользователь {user_id} скачивает SoundCloud трек из поиска: {url}")
-        
         # Проверяем премиум статус пользователя
         is_premium = is_premium_user(user_id, callback.from_user.username)
         
-        # Используем быструю систему очередей
+        # Используем быструю систему очередей с user-specific семафором
         success = await add_to_download_queue_fast(user_id, url, is_premium)
         
         if success:
@@ -3276,7 +3243,6 @@ async def download_soundcloud_from_search(callback: types.CallbackQuery):
             await callback.answer("❌ Ошибка добавления трека", show_alert=True)
         
     except Exception as e:
-        logging.error(f"❌ Ошибка скачивания SoundCloud трека из поиска: {e}")
         await callback.answer("❌ Произошла ошибка при запуске загрузки.", show_alert=True)
 
 # Удалена старая функция build_tracks_keyboard
@@ -3284,11 +3250,8 @@ async def download_soundcloud_from_search(callback: types.CallbackQuery):
 async def search_soundcloud(query):
     """Поиск на SoundCloud через yt-dlp"""
     try:
-        logging.info(f"🔍 Поиск на SoundCloud: {query}")
-        
         # Формируем поисковый запрос с префиксом scsearch
         search_query = f"scsearch{SOUNDCLOUD_SEARCH_LIMIT}:{query}"
-        logging.info(f"🔍 Поисковый запрос: {search_query}")
         
         # Используем yt-dlp для поиска
         ydl_opts = {
@@ -3552,6 +3515,9 @@ async def search_soundcloud_artist(artist):
 @dp.callback_query(F.data == "for_you")
 async def for_you_section(callback: types.CallbackQuery):
     """Показывает рекомендуемые треки для пользователя"""
+    # Быстрый ответ для ускорения
+    await callback.answer("⏳ Обрабатываю...")
+    
     user_id = str(callback.from_user.id)
     
     # Проверяем антиспам
@@ -3577,14 +3543,12 @@ async def for_you_section(callback: types.CallbackQuery):
                 ])
             )
         except Exception as edit_error:
-            logging.warning(f"⚠️ Не удалось отредактировать сообщение: {edit_error}")
             # Если не удалось отредактировать, отправляем новое
             await callback.message.answer("⏳ Пожалуйста, подождите..")
         
         # Загружаем треки пользователя заново
         global user_tracks
         user_tracks = load_json(TRACKS_FILE, {})
-        logging.info(f"🎯 for_you_section: загружено user_tracks для пользователя {user_id}: {len(user_tracks.get(str(user_id), [])) if user_tracks.get(str(user_id)) else 0} треков")
         
         # Получаем рекомендуемые треки
         recommended_tracks = await get_recommended_tracks(user_id)
@@ -3603,7 +3567,6 @@ async def for_you_section(callback: types.CallbackQuery):
                     ])
                 )
             except Exception as edit_error:
-                logging.warning(f"⚠️ Не удалось отредактировать сообщение об ошибке: {edit_error}")
                 await callback.message.answer("❌ **Не удалось подобрать треки**\n\nПопробуйте позже или обратитесь в поддержку.")
             return
         
@@ -3619,7 +3582,6 @@ async def for_you_section(callback: types.CallbackQuery):
                 parse_mode="Markdown"
             )
         except Exception as edit_error:
-            logging.warning(f"⚠️ Не удалось обновить сообщение о начале загрузки: {edit_error}")
             # Если не удалось отредактировать, отправляем новое
             await callback.message.answer(f"⏳ **Загружаю {len(recommended_tracks)} рекомендуемых треков...**\n\n🎵 Скачиваю аудиофайлы для прослушивания...\n💡 Это может занять несколько минут.", parse_mode="Markdown")
 
@@ -4032,20 +3994,17 @@ async def send_tracks_as_audio(user_id: str, tracks: list, status_msg: types.Mes
 @dp.callback_query(F.data == "my_music")
 async def my_music(callback: types.CallbackQuery):
     """Показывает треки пользователя в формате поиска - с кнопками для скачивания"""
-    logging.info("🔍 === ФУНКЦИЯ my_music ВЫЗВАНА ===")
+    # Быстрый ответ для ускорения
+    await callback.answer("⏳ Обрабатываю...")
     
     global user_tracks
     user_id = str(callback.from_user.id)
-    logging.info(f"🔍 my_music: ID пользователя: {user_id}")
     
     # Проверяем антиспам
     is_allowed, time_until = check_antispam(user_id)
     if not is_allowed:
-        logging.info(f"⏳ my_music: антиспам заблокировал пользователя {user_id}")
         await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
         return
-    
-    logging.info(f"✅ my_music: антиспам прошел для пользователя {user_id}")
     
     # Получаем треки пользователя - загружаем заново каждый раз
     global user_tracks
@@ -4053,24 +4012,17 @@ async def my_music(callback: types.CallbackQuery):
     
     # Проверяем, что user_tracks является словарем
     if not isinstance(user_tracks, dict):
-        logging.warning(f"⚠️ my_music: user_tracks не является словарем: {type(user_tracks)}, инициализируем")
         user_tracks = {}
     
     tracks = user_tracks.get(user_id, [])
-    
-    logging.info(f"🔍 my_music: пользователь {user_id}, загружено треков: {len(tracks) if tracks else 0}")
-    logging.info(f"🔍 my_music: содержимое user_tracks: {user_tracks}")
-    logging.info(f"🔍 my_music: тип tracks: {type(tracks)}, tracks is None: {tracks is None}, tracks == []: {tracks == []}")
     
     # Проверяем, что tracks не None и является списком
     if tracks is None:
         tracks = []
         user_tracks[user_id] = tracks
-        logging.info(f"🔍 my_music: tracks был None, инициализирован пустым списком для пользователя {user_id}")
     
     if not tracks:
         # При пустом плейлисте отправляем новое сообщение без кнопок
-        logging.info(f"🔍 my_music: плейлист пуст для пользователя {user_id}")
         
         # Удаляем предыдущее сообщение для чистоты чата
         try:
@@ -4080,9 +4032,8 @@ async def my_music(callback: types.CallbackQuery):
         
         try:
             await callback.message.answer("📂 У вас нет треков.")
-            logging.info(f"✅ my_music: сообщение о пустом плейлисте отправлено для пользователя {user_id}")
         except Exception as answer_error:
-            logging.error(f"❌ my_music: ошибка отправки сообщения о пустом плейлисте: {answer_error}")
+            pass
         return
     
     try:
@@ -5589,6 +5540,9 @@ async def handle_genre_selection(callback: types.CallbackQuery):
 @dp.callback_query(F.data == "show_genres")
 async def show_genres_callback(callback: types.CallbackQuery):
     """Показывает список жанров через callback"""
+    # Быстрый ответ для ускорения
+    await callback.answer("⏳ Обрабатываю...")
+    
     user_id = str(callback.from_user.id)
     username = callback.from_user.username
     
@@ -5636,9 +5590,10 @@ async def show_genres_callback(callback: types.CallbackQuery):
 @dp.callback_query(F.data == "back_to_main")
 async def back_to_main_menu(callback: types.CallbackQuery):
     """Возвращает пользователя в главное меню из inline-меню"""
-    user_id = str(callback.from_user.id)
+    # Быстрый ответ для ускорения
+    await callback.answer("⏳ Обрабатываю...")
     
-    logging.info(f"🔙 Пользователь {user_id} возвращается в главное меню")
+    user_id = str(callback.from_user.id)
     
     try:
         # Отправляем изображение мишки без текста, только с меню
@@ -5649,7 +5604,6 @@ async def back_to_main_menu(callback: types.CallbackQuery):
             reply_markup=main_menu
         )
     except Exception as e:
-        logging.error(f"❌ Ошибка в back_to_main_menu: {e}")
         # Если что-то пошло не так, просто отправляем главное меню
         try:
             await callback.message.edit_media(
@@ -5659,12 +5613,14 @@ async def back_to_main_menu(callback: types.CallbackQuery):
                 reply_markup=main_menu
             )
         except Exception as photo_error:
-            logging.error(f"❌ Ошибка отправки фото: {photo_error}")
             await callback.message.edit_text("🎵 Главное меню", reply_markup=main_menu)
 
 @dp.callback_query(F.data == "search_artist_again")
 async def search_artist_again_callback(callback: types.CallbackQuery, state: FSMContext):
     """Повторный поиск по исполнителю"""
+    # Быстрый ответ для ускорения
+    await callback.answer("⏳ Обрабатываю...")
+    
     user_id = str(callback.from_user.id)
     username = callback.from_user.username
     
@@ -6051,6 +6007,9 @@ async def main_worker():
                     # Запускаем обработчик webhook обновлений
                     logging.info("🔄 Запускаем обработчик webhook обновлений")
                     webhook_task = asyncio.create_task(webhook_update_processor())
+                    
+                    # Запускаем задачу очистки семафоров пользователей
+                    cleanup_task = asyncio.create_task(cleanup_user_semaphores())
                     
                     # В Render используем только webhook, не запускаем polling
                     logging.info("✅ Webhook настроен, бот готов к работе")
@@ -7095,7 +7054,7 @@ async def webhook_update_processor():
                 
         except Exception as e:
             logging.error(f"❌ Ошибка в обработчике webhook обновлений: {e}")
-            await asyncio.sleep(0.1)  # Уменьшили задержку при ошибках
+            # Убираем задержку при ошибках для максимальной скорости
         
         # Убрали паузу между итерациями для максимальной скорости
 
