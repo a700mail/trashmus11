@@ -2579,7 +2579,7 @@ async def search_music(message: types.Message, state: FSMContext):
     if re.match(yt_url_pattern, query):
         # асинхронно сохраняем метаданные в background (не блокируем основной цикл)
         asyncio.create_task(download_track_from_url(message.from_user.id, query))
-        return await message.answer("✅ Трек добавлен в вашу коллекцию! Теперь вы можете скачать его в разделе «Моя музыка».", reply_markup=main_menu")
+        return await message.answer("✅ Трек добавлен в вашу коллекцию! Теперь вы можете скачать его в разделе «Моя музыка».", reply_markup=main_menu)
 
     search_msg = await message.answer("🔍 Поиск...")
 
