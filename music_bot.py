@@ -2551,7 +2551,7 @@ async def search_by_artist(message: types.Message, state: FSMContext):
             youtube_results = None
         
         if not youtube_results or not youtube_results.get('entries'):
-            await message.answer(f"❄️ Не найдено треков исполнителя '{artist}' на YouTube. Попробуйте другое имя.", reply_markup=main_menu)
+            await message.answer(f"❄️ Не найдено треков исполнителя '{artist}'. Попробуйте другое имя.", reply_markup=main_menu)
             return
         
         # Фильтруем треки по длительности (минимум 1 минута) и качеству
