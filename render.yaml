@@ -8,6 +8,8 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.16
+      - key: RENDER
+        value: true
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: BOT_TOKEN
