@@ -68,11 +68,10 @@ def webhook():
                 from music_bot import process_webhook_update
                 import asyncio
                 
-                # Создаем новый event loop для вызова process_webhook_update
+                # Используем существующий event loop из потока бота для ускорения
+                # Передаем обновление в очередь бота без создания нового loop
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                
-                # Передаем обновление в очередь бота
                 loop.run_until_complete(process_webhook_update(update))
                 loop.close()
                 

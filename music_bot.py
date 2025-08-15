@@ -2049,6 +2049,9 @@ back_button = InlineKeyboardMarkup(
 @dp.callback_query(F.data == "back_to_main")
 async def back_to_main_menu(callback: types.CallbackQuery):
     """Возвращает пользователя в главное меню"""
+    # Быстрый ответ для ускорения
+    await callback.answer("⏳ Обрабатываю...")
+    
     user_id = str(callback.from_user.id)
     
     # Проверяем антиспам
@@ -2097,6 +2100,9 @@ async def send_welcome(message: types.Message):
 @dp.callback_query(F.data == "by_artist")
 async def by_artist_section(callback: types.CallbackQuery, state: FSMContext):
     """Открывает поиск по исполнителю"""
+    # Быстрый ответ для ускорения
+    await callback.answer("⏳ Обрабатываю...")
+    
     user_id = str(callback.from_user.id)
     
     # Проверяем антиспам
@@ -2121,6 +2127,9 @@ async def by_artist_section(callback: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data == "premium_features")
 async def show_artist_search_menu(callback: types.CallbackQuery, state: FSMContext):
     """Показывает форму поиска по исполнителю"""
+    # Быстрый ответ для ускорения
+    await callback.answer("⏳ Обрабатываю...")
+    
     user_id = str(callback.from_user.id)
     
     # Проверяем антиспам
@@ -2438,6 +2447,9 @@ async def remove_premium_command(message: types.Message):
 # === Поиск ===
 @dp.callback_query(F.data == "find_track")
 async def ask_track_name(callback: types.CallbackQuery, state: FSMContext):
+    # Быстрый ответ для ускорения
+    await callback.answer("⏳ Обрабатываю...")
+    
     user_id = str(callback.from_user.id)
     
     # Проверяем антиспам
@@ -7050,9 +7062,9 @@ async def webhook_update_processor():
                 
         except Exception as e:
             logging.error(f"❌ Ошибка в обработчике webhook обновлений: {e}")
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.1)  # Уменьшили задержку при ошибках
         
-        await asyncio.sleep(0.05)  # Уменьшили паузу для быстрой обработки
+        # Убрали паузу между итерациями для максимальной скорости
 
 if __name__ == "__main__":
     # Проверяем, что мы в главном потоке
