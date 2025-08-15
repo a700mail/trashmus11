@@ -60,8 +60,8 @@ def webhook():
         # Обрабатываем обновление через диспетчер бота
         if bot_thread and bot_running:
             try:
-                # Импортируем диспетчер и обрабатываем обновление
-                from music_bot import dp
+                # Импортируем диспетчер и бота
+                from music_bot import dp, bot
                 import asyncio
                 
                 # Создаем новый event loop для обработки
