@@ -5984,7 +5984,7 @@ async def main():
         raise
 
 async def main_worker():
-    """Версия main() для дочерних потоков без polling"""
+    """Версия main() для дочерних потоков с webhook для Render"""
     logging.info("🚀 Запуск функции main_worker() в дочернем потоке")
     try:
         # Проверяем, что бот и диспетчер инициализированы
@@ -6003,13 +6003,41 @@ async def main_worker():
         except Exception as e:
             logging.error(f"❌ Ошибка запуска фоновых задач: {e}")
         
-        # В дочернем потоке НЕ запускаем polling
+        # Проверяем, запущен ли в Render
+        if os.environ.get('RENDER'):
+            logging.info("🌐 Запуск в Render - настраиваем webhook")
+            try:
+                # Получаем URL сервиса из переменных окружения
+                service_url = os.environ.get('RENDER_EXTERNAL_URL')
+                if service_url:
+                    webhook_url = f"{service_url}/webhook"
+                    logging.info(f"🔗 Настраиваем webhook: {webhook_url}")
+                    
+                    # Устанавливаем webhook
+                    await bot.set_webhook(url=webhook_url)
+                    logging.info("✅ Webhook установлен успешно")
+                    
+                    # Запускаем webhook
+                    await dp.start_webhook(
+                        bot=bot,
+                        webhook_path="/webhook",
+                        host="0.0.0.0",
+                        port=int(os.environ.get('PORT', 10000))
+                    )
+                    logging.info("✅ Webhook запущен")
+                else:
+                    logging.warning("⚠️ RENDER_EXTERNAL_URL не установлен, используем polling")
+                    await dp.start_polling(bot, skip_updates=True)
+            except Exception as e:
+                logging.error(f"❌ Ошибка запуска webhook: {e}, переключаемся на polling")
+                await dp.start_polling(bot, skip_updates=True)
+        else:
+            # Локальный запуск - используем polling
+            logging.info("💻 Локальный запуск - используем polling")
+            await dp.start_polling(bot, skip_updates=True)
+        
         logging.info("✅ Бот готов к работе в дочернем потоке")
         
-        # Держим поток живым
-        while True:
-            await asyncio.sleep(1)
-            
     except Exception as e:
         logging.error(f"❌ Критическая ошибка в main_worker(): {e}")
         return

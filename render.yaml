@@ -10,3 +10,5 @@ services:
         sync: false
       - key: RENDER
         value: "true"
+      - key: RENDER_EXTERNAL_URL
+        sync: false
