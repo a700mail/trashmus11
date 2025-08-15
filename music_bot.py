@@ -83,19 +83,12 @@ image_cache = {}
 IMAGE_CACHE_MAX_SIZE = 100
 IMAGE_CACHE_TTL = 7200  # 2 часа для изображений
 
-# === НАСТРОЙКИ ПРЕМИУМ МОНИТОРИНГА ===
-PREMIUM_NOTIFICATION_INTERVAL = 604800  # 7 дней в секундах (напоминания о премиуме)
-PREMIUM_GRACE_PERIOD = 259200  # 3 дня в секундах (грация после отмены премиума)
-PREMIUM_EXPIRY_WARNING = 86400  # 1 день в секундах (предупреждение об истечении)
-
 ARTIST_FACTS_FILE = os.path.join(os.path.dirname(__file__), "artist_facts.json")
-PREMIUM_USERS_FILE = os.path.join(os.path.dirname(__file__), "premium_users.json")
 SEARCH_CACHE_TTL = 600
 PAGE_SIZE = 10  # для постраничной навигации
 
-# === НАСТРОЙКИ ПРИОРИТЕТНОЙ ОЧЕРЕДИ ===
-PREMIUM_QUEUE = PriorityQueue()  # Приоритетная очередь для премиум пользователей
-REGULAR_QUEUE = deque()  # Обычная очередь для обычных пользователей
+# === НАСТРОЙКИ ОЧЕРЕДИ ===
+REGULAR_QUEUE = deque()  # Очередь для пользователей
 
 # === НАСТРОЙКИ WEBHOOK ===
 # Глобальная переменная для хранения последнего webhook обновления
@@ -581,315 +574,45 @@ def save_json(path, data):
         return False
 
 def is_premium_user(user_id: str, username: str = None) -> bool:
-    """Проверяет, является ли пользователь премиум"""
-    try:
-        premium_data = load_json(PREMIUM_USERS_FILE, {"premium_users": [], "premium_usernames": []})
-        
-        # Отладочная информация
-        logging.info(f"🔍 Проверка премиум статуса: user_id={user_id}, username={username}")
-        logging.info(f"🔍 Список премиум ID: {premium_data.get('premium_users', [])}")
-        logging.info(f"🔍 Список премиум username: {premium_data.get('premium_usernames', [])}")
-        
-        # Проверяем по ID
-        if user_id and str(user_id) in premium_data.get("premium_users", []):
-            logging.info(f"✅ Пользователь {user_id} найден в списке премиум по ID")
-            return True
-            
-        # Проверяем по username
-        if username and username in premium_data.get("premium_usernames", []):
-            logging.info(f"✅ Пользователь {username} найден в списке премиум по username")
-            return True
-            
-        logging.info(f"❌ Пользователь {user_id} ({username}) не найден в списке премиум")
-        return False
-    except Exception as e:
-        logging.error(f"❌ Ошибка проверки премиум статуса: {e}")
-        return False
+    """Функция премиум удалена - всегда возвращает False"""
+    return False
 
 def get_subscription_info(user_id: str) -> dict:
-    """Получает информацию о подписке пользователя"""
-    try:
-        premium_data = load_json(PREMIUM_USERS_FILE, {"subscriptions": {}})
-        return premium_data.get("subscriptions", {}).get(str(user_id), {})
-    except Exception as e:
-        logging.error(f"❌ Ошибка получения информации о подписке: {e}")
-        return {}
+    """Функция премиум удалена - возвращает пустой словарь"""
+    return {}
 
 async def create_payment_invoice(user_id: int, chat_id: int) -> types.LabeledPrice:
-    """Создает счет для оплаты (заглушка)"""
+    """Функция премиум удалена - заглушка"""
     pass
 
 async def create_yoomoney_payment(user_id: str, username: str = None) -> str:
-    """Создает платеж через YooMoney и возвращает URL для оплаты"""
-    try:
-        logging.info(f"🔍 Создание платежа YooMoney для пользователя {user_id} ({username})")
-        
-        if not YOOMONEY_AVAILABLE or not YOOMONEY_ENABLED:
-            logging.error("❌ YooMoney недоступен")
-            return ""
-        
-        logging.info(f"✅ YooMoney доступен: AVAILABLE={YOOMONEY_AVAILABLE}, ENABLED={YOOMONEY_ENABLED}")
-        
-        # Создаем уникальную метку для платежа
-        payment_label = f"premium_{user_id}_{int(time.time())}"
-        logging.info(f"🔑 Создана метка платежа: {payment_label}")
-        
-        # Создаем URL для оплаты
-        logging.info(f"🔗 Создание платежного URL: account={YOOMONEY_ACCOUNT}, amount={YOOMONEY_PAYMENT_AMOUNT}")
-        payment_url = create_simple_payment_url(
-            account=YOOMONEY_ACCOUNT,
-            amount=YOOMONEY_PAYMENT_AMOUNT,
-            comment=f"Премиум подписка для {username or user_id}",
-            label=payment_label
-        )
-        
-        if payment_url:
-            logging.info(f"✅ Платежный URL создан успешно: {payment_url[:100]}...")
-            
-            # Сохраняем информацию о платеже
-            payment_data = {
-                "user_id": user_id,
-                "username": username,
-                "label": payment_label,
-                "amount": YOOMONEY_PAYMENT_AMOUNT,
-                "created_at": datetime.now().isoformat(),
-                "status": "pending"
-            }
-            
-            logging.info(f"💾 Сохранение данных платежа: {payment_data}")
-            
-            # Загружаем существующие платежи
-            payments = load_json("payment_requests.json", {"payments": []})
-            
-            # Проверяем структуру файла
-            if "payments" not in payments:
-                # Если структура старая, создаем новую
-                logging.info("🔄 Обновление структуры файла платежей")
-                payments = {"payments": []}
-            
-            payments["payments"].append(payment_data)
-            
-            # Сохраняем с проверкой пути
-            file_path = "payment_requests.json"
-            if save_json(file_path, payments):
-                logging.info(f"✅ Данные платежа сохранены в {file_path}")
-            else:
-                logging.error(f"❌ Не удалось сохранить данные платежа в {file_path}")
-            
-            logging.info(f"✅ Создан платеж YooMoney для пользователя {user_id}: {payment_label}")
-            return payment_url
-        else:
-            logging.error(f"❌ Не удалось создать платеж YooMoney для пользователя {user_id}")
-            return ""
-            
-    except Exception as e:
-        logging.error(f"❌ Ошибка создания платежа YooMoney: {e}")
-        logging.exception("Полный стек ошибки:")
-        return ""
+    """Функция премиум удалена - заглушка"""
+    return ""
 
 async def process_successful_payment(pre_checkout_query: types.PreCheckoutQuery):
     """Обрабатывает успешную оплату (заглушка)"""
     pass
 
 def add_premium_user(user_id: str = None, username: str = None) -> bool:
-    """Добавляет пользователя в список премиум"""
-    try:
-        premium_data = load_json(PREMIUM_USERS_FILE, {"premium_users": [], "premium_usernames": []})
-        
-        # Добавляем по ID
-        if user_id and str(user_id) not in premium_data.get("premium_users", []):
-            premium_data.setdefault("premium_users", []).append(str(user_id))
-            
-        # Добавляем по username
-        if username and username not in premium_data.get("premium_usernames", []):
-            premium_data.setdefault("premium_usernames", []).append(username)
-            
-        # Добавляем информацию о подписке
-        if user_id:
-            premium_data.setdefault("subscriptions", {})
-            premium_data["subscriptions"][str(user_id)] = {
-                "start_date": datetime.now().isoformat(),
-                "expiry_date": (datetime.now() + timedelta(days=30)).isoformat(),
-                "active": True,
-                "payment_method": "ton_payment"
-            }
-        
-        save_json(PREMIUM_USERS_FILE, premium_data)
-        logging.info(f"✅ Пользователь {user_id} ({username}) добавлен в премиум")
-        return True
-        
-    except Exception as e:
-        logging.error(f"❌ Ошибка добавления премиум пользователя: {e}")
-        return False
+    """Функция премиум удалена - заглушка"""
+    return False
 
 def remove_premium_user(user_id: str = None, username: str = None) -> bool:
-    """Удаляет пользователя из списка премиум"""
-    try:
-        premium_data = load_json(PREMIUM_USERS_FILE, {"premium_users": [], "premium_usernames": []})
-        
-        # Удаляем по ID
-        if user_id and str(user_id) in premium_data.get("premium_users", []):
-            premium_data["premium_users"].remove(str(user_id))
-            
-        # Удаляем по username
-        if username and username in premium_data.get("premium_usernames", []):
-            premium_data["premium_usernames"].remove(username)
-            
-        # Удаляем информацию о подписке
-        if user_id and "subscriptions" in premium_data:
-            premium_data["subscriptions"].pop(str(user_id), None)
-        
-        save_json(PREMIUM_USERS_FILE, premium_data)
-        logging.info(f"✅ Пользователь {user_id} ({username}) удален из премиум")
-        return True
-        
-    except Exception as e:
-        logging.error(f"❌ Ошибка удаления премиум пользователя: {e}")
-        return False
+    """Функция премиум удалена - заглушка"""
+    return False
 
 async def check_ton_payment(user_id: str, amount: float = 0.60423) -> bool:
-    """Автоматическая проверка TON платежа через API"""
-    try:
-        # Проверяем входные параметры
-        if not user_id or not isinstance(user_id, str):
-            logging.error("❌ check_ton_payment: некорректный user_id")
-            return False
-            
-        if not TON_WALLET or not TON_API_KEY:
-            logging.error("❌ check_ton_payment: отсутствуют настройки TON")
-            return False
-
-        async with aiohttp.ClientSession() as session:
-            # Используем TON API для проверки последних транзакций
-            url = f"https://toncenter.com/api/v2/getTransactions"
-            params = {
-                "address": TON_WALLET,
-                "limit": 10,
-                "api_key": TON_API_KEY
-            }
-            
-            async with session.get(url, params=params) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    if data.get("ok"):
-                        transactions = data.get("result", [])
-                        
-                        if not transactions:
-                            logging.info("📊 TON API: транзакции не найдены")
-                            return False
-                        
-                        # Проверяем последние транзакции за последние 24 часа
-                        current_time = int(time.time())
-                        day_ago = current_time - 86400
-                        
-                        for tx in transactions:
-                            if not tx or not isinstance(tx, dict):
-                                continue
-                                
-                            tx_time = tx.get("utime", 0)
-                            if tx_time < day_ago:
-                                continue
-                                
-                            try:
-                                tx_amount = float(tx.get("value", 0)) / 1e9  # Конвертируем из наноТОН
-                            except (ValueError, TypeError):
-                                logging.warning(f"⚠️ Некорректная сумма транзакции: {tx.get('value')}")
-                                continue
-                            
-                            # Проверяем, что сумма примерно равна 1 USDT (0.302115 TON)
-                            # Устанавливаем диапазон ±10% для учета колебаний курса
-                            if 0.27 <= tx_amount <= 0.33:
-                                # Проверяем комментарий (если есть)
-                                comment = tx.get("comment", "")
-                                if str(user_id) in comment or not comment:
-                                    logging.info(f"✅ Найден подходящий TON платеж: {tx_amount} TON для пользователя {user_id}")
-                                    return True
-                        
-                        logging.info(f"📊 TON API: подходящие платежи не найдены для пользователя {user_id}")
-                        return False
-                    else:
-                        logging.error(f"❌ TON API error: {data.get('error')}")
-                        return False
-                else:
-                    logging.error(f"❌ TON API HTTP error: {response.status}")
-                    return False
-                    
-    except Exception as e:
-        logging.error(f"❌ Ошибка проверки TON платежа: {e}")
-        return False
+    """Функция премиум удалена - заглушка"""
+    return False
 
 async def check_yoomoney_payment(user_id: str) -> bool:
-    """Проверяет платеж через YooMoney"""
-    try:
-        if not YOOMONEY_AVAILABLE or not YOOMONEY_ENABLED:
-            return False
-        
-        # Загружаем информацию о платежах
-        payments = load_json("payment_requests.json", {"payments": []})
-        
-        # Проверяем структуру файла
-        if "payments" not in payments:
-            # Если структура старая, создаем новую
-            payments = {"payments": []}
-        
-        # Ищем активные платежи пользователя
-        user_payments = [p for p in payments["payments"] 
-                        if p["user_id"] == user_id and p["status"] == "pending"]
-        
-        if not user_payments:
-            return False
-        
-        # Проверяем каждый платеж
-        for payment in user_payments:
-            label = payment["label"]
-            expected_amount = payment["amount"]
-            
-            # Проверяем статус платежа
-            if verify_payment_by_label(label, expected_amount):
-                # Платеж подтвержден
-                payment["status"] = "completed"
-                payment["completed_at"] = datetime.now().isoformat()
-                
-                # Сохраняем обновленные данные
-                file_path = "payment_requests.json"
-                if save_json(file_path, payments):
-                    logging.info(f"✅ Обновленные данные платежа сохранены в {file_path}")
-                else:
-                    logging.error(f"❌ Не удалось сохранить обновленные данные платежа в {file_path}")
-                
-                logging.info(f"✅ Платеж YooMoney подтвержден для пользователя {user_id}: {label}")
-                return True
-        
-        return False
-        
-    except Exception as e:
-        logging.error(f"❌ Ошибка проверки платежа YooMoney: {e}")
-        return False
+    """Функция премиум удалена - заглушка"""
+    return False
         
 
 def generate_payment_code(user_id: str, username: str) -> str:
-    """Генерирует уникальный код для отслеживания платежа"""
-    try:
-        # Проверяем входные параметры
-        if not user_id or not isinstance(user_id, str):
-            logging.error("❌ generate_payment_code: некорректный user_id")
-            user_id = "unknown"
-            
-        if not username or not isinstance(username, str):
-            logging.warning("⚠️ generate_payment_code: некорректный username")
-            username = "unknown"
-        
-        timestamp = str(int(time.time()))
-        random_part = secrets.token_hex(4)
-        payment_code = f"{user_id}_{timestamp}_{random_part}"
-        
-        logging.info(f"🔑 Сгенерирован код оплаты: {payment_code}")
-        return payment_code
-        
-    except Exception as e:
-        logging.error(f"❌ Ошибка генерации кода оплаты: {e}")
-        # Возвращаем fallback код
-        return f"fallback_{int(time.time())}_{secrets.token_hex(2)}"
+    """Функция премиум удалена - заглушка"""
+    return "premium_disabled"
 
 user_tracks = load_json(TRACKS_FILE, {})
 search_cache = load_json(SEARCH_CACHE_FILE, {})
@@ -900,7 +623,6 @@ TRACK_CACHE_MAX_SIZE = 1000  # Максимальное количество к�
 
 # Система очередей для быстрого добавления треков
 REGULAR_QUEUE = deque()
-PREMIUM_QUEUE = asyncio.PriorityQueue()
 
 artist_facts = load_json(ARTIST_FACTS_FILE, {"facts": {}})
 
@@ -1437,268 +1159,34 @@ async def auto_repair_damaged_file(file_path: str, user_id: str, original_url: s
         return False
 
 async def start_premium_monitoring():
-    """Запускает мониторинг премиум пользователей"""
-    while True:
-        try:
-            await asyncio.sleep(3600)  # Каждый час
-            
-            # Проверяем истечение премиума
-            await check_premium_expiry()
-            
-            # Отправляем еженедельные напоминания
-            await send_weekly_premium_reminders()
-            
-        except Exception as e:
-            logging.error(f"❌ Ошибка в мониторинге премиума: {e}")
+    """Функция премиум удалена - заглушка"""
+    pass
 
 async def check_premium_expiry():
-    """
-    Проверяет истечение премиума и отправляет уведомления.
-    """
-    try:
-        premium_data = load_json(PREMIUM_USERS_FILE, {"subscriptions": {}})
-        subscriptions = premium_data.get("subscriptions", {})
-        
-        current_time = datetime.now()
-        
-        for user_id, sub_info in subscriptions.items():
-            try:
-                if not sub_info.get("active", False):
-                    continue
-                
-                expiry_date_str = sub_info.get("expiry_date")
-                if not expiry_date_str:
-                    continue
-                
-                expiry_date = datetime.fromisoformat(expiry_date_str)
-                time_until_expiry = (expiry_date - current_time).total_seconds()
-                
-                # Предупреждение за 1 день
-                if 0 < time_until_expiry <= PREMIUM_EXPIRY_WARNING:
-                    await send_premium_expiry_warning(user_id, time_until_expiry)
-                
-                # Премиум истек
-                elif time_until_expiry <= 0:
-                    await handle_premium_expiry(user_id)
-                    
-            except Exception as e:
-                logging.error(f"❌ Ошибка проверки премиума для пользователя {user_id}: {e}")
-                
-    except Exception as e:
-        logging.error(f"❌ Ошибка проверки истечения премиума: {e}")
+    """Функция премиум удалена - заглушка"""
+    pass
 
 async def send_premium_expiry_warning(user_id: str, time_until_expiry: float):
-    """
-    Отправляет предупреждение об истечении премиума.
-    """
-    try:
-        days_left = int(time_until_expiry / 86400)
-        hours_left = int((time_until_expiry % 86400) / 3600)
-        
-        warning_message = (
-            f"⚠️ **ВНИМАНИЕ! Ваш премиум доступ истекает!**\n\n"
-            f"⏰ **Осталось:** {days_left} дней, {hours_left} часов\n\n"
-            f"💡 **Что произойдет после истечения:**\n"
-            f"• Треки останутся доступными еще 3 дня\n"
-            f"• Затем они будут автоматически удалены\n"
-            f"• Придется заново скачивать любимую музыку\n\n"
-            f"💎 **Продлите премиум сейчас и сохраните коллекцию!**\n\n"
-            f"💰 **Стоимость:** 1 USDT\n"
-            f"🔗 **Нажмите:** /buy_premium"
-        )
-        
-        try:
-            await bot.send_message(user_id, warning_message, parse_mode="Markdown")
-            logging.info(f"✅ Предупреждение об истечении премиума отправлено пользователю {user_id}")
-        except Exception as e:
-            logging.error(f"❌ Ошибка отправки предупреждения пользователю {user_id}: {e}")
-            
-    except Exception as e:
-        logging.error(f"❌ Ошибка формирования предупреждения для {user_id}: {e}")
+    """Функция премиум удалена - заглушка"""
+    pass
 
 async def handle_premium_expiry(user_id: str):
-    """
-    Обрабатывает истечение премиума пользователя.
-    """
-    try:
-        # Загружаем данные о премиуме
-        premium_data = load_json(PREMIUM_USERS_FILE, {"subscriptions": {}})
-        subscriptions = premium_data.get("subscriptions", {})
-        
-        if user_id in subscriptions:
-            # Помечаем премиум как неактивный
-            subscriptions[user_id]["active"] = False
-            subscriptions[user_id]["expired_at"] = datetime.now().isoformat()
+    """Функция премиум удалена - заглушка"""
+    pass
             
-            # Сохраняем изменения
-            save_json(PREMIUM_USERS_FILE, premium_data)
-            
-            # Планируем удаление файлов через 3 дня
-            asyncio.create_task(schedule_premium_cleanup(user_id, PREMIUM_GRACE_PERIOD))
-            
-            # Отправляем уведомление
-            expiry_message = (
-                f"❌ **Ваш премиум доступ истек!**\n\n"
-                f"💾 **Ваши треки будут доступны еще 3 дня**\n"
-                f"⏰ **После этого они будут автоматически удалены**\n\n"
-                f"💡 **Рекомендуем:**\n"
-                f"• Скачать важные треки на устройство\n"
-                f"• Продлить премиум для сохранения коллекции\n\n"
-                f"💎 **Продлить премиум:** /buy_premium"
-            )
-            
-            try:
-                await bot.send_message(user_id, expiry_message, parse_mode="Markdown")
-                logging.info(f"✅ Уведомление об истечении премиума отправлено пользователю {user_id}")
-            except Exception as e:
-                logging.error(f"❌ Ошибка отправки уведомления пользователю {user_id}: {e}")
-                
-    except Exception as e:
-        logging.error(f"❌ Ошибка обработки истечения премиума для {user_id}: {e}")
+    pass
 
 async def schedule_premium_cleanup(user_id: str, delay_seconds: int):
-    """
-    Планирует очистку файлов премиум пользователя через указанное время.
-    """
-    try:
-        await asyncio.sleep(delay_seconds)
-        
-        # Загружаем данные о премиуме
-        premium_data = load_json(PREMIUM_USERS_FILE, {"subscriptions": {}})
-        subscriptions = premium_data.get("subscriptions", {})
-        
-        # Проверяем, не продлил ли пользователь премиум
-        if user_id in subscriptions and subscriptions[user_id].get("active", False):
-            logging.info(f"✅ Пользователь {user_id} продлил премиум, очистка отменена")
-            return
-        
-        # Удаляем файлы пользователя
-        await cleanup_expired_premium_user(user_id)
-        
-    except Exception as e:
-        logging.error(f"❌ Ошибка планирования очистки премиум пользователя {user_id}: {e}")
+    """Функция премиум удалена - заглушка"""
+    pass
 
 async def cleanup_expired_premium_user(user_id: str):
-    """
-    Очищает файлы пользователя после истечения премиума.
-    """
-    try:
-        global user_tracks
-        
-        if not user_tracks or user_id not in user_tracks:
-            return
-        
-        tracks = user_tracks[user_id]
-        if not tracks:
-            return
-        
-        deleted_count = 0
-        total_size_freed = 0
-        
-        for track in tracks:
-            try:
-                if isinstance(track, dict):
-                    file_path = track.get('url', '').replace('file://', '')
-                else:
-                    file_path = track
-                
-                if file_path and os.path.exists(file_path):
-                    try:
-                        file_size = os.path.getsize(file_path)
-                        os.remove(file_path)
-                        deleted_count += 1
-                        total_size_freed += file_size
-                        logging.info(f"🧹 Удален файл истекшего премиума: {file_path}")
-                    except Exception as e:
-                        logging.error(f"❌ Ошибка удаления файла {file_path}: {e}")
-                        
-            except Exception as e:
-                logging.error(f"❌ Ошибка обработки трека: {e}")
-        
-        # Очищаем коллекцию пользователя
-        user_tracks[user_id] = []
-        save_tracks()
-        
-        if deleted_count > 0:
-            total_size_mb = total_size_freed / (1024 * 1024)
-            logging.info(f"🧹 Очистка истекшего премиума завершена: удалено {deleted_count} файлов, освобождено {total_size_mb:.2f} MB")
-            
-            # Отправляем финальное уведомление
-            final_message = (
-                f"🗑️ **Очистка завершена**\n\n"
-                f"❌ **Ваши треки были удалены**\n"
-                f"💾 **Освобождено места:** {total_size_mb:.2f} MB\n\n"
-                f"💡 **Чтобы восстановить коллекцию:**\n"
-                f"• Купите премиум заново\n"
-                f"• Заново скачайте любимые треки\n\n"
-                f"💎 **Купить премиум:** /buy_premium"
-            )
-            
-            try:
-                await bot.send_message(user_id, final_message, parse_mode="Markdown")
-            except Exception as e:
-                logging.error(f"❌ Ошибка отправки финального уведомления пользователю {user_id}: {e}")
-                
-    except Exception as e:
-        logging.error(f"❌ Ошибка очистки истекшего премиума для {user_id}: {e}")
+    """Функция премиум удалена - заглушка"""
+    pass
 
 async def send_weekly_premium_reminders():
-    """
-    Отправляет еженедельные напоминания о преимуществах премиума.
-    """
-    try:
-        # Загружаем данные о пользователях
-        premium_data = load_json(PREMIUM_USERS_FILE, {"premium_users": [], "premium_usernames": []})
-        premium_users = set(premium_data.get("premium_users", []))
-        premium_usernames = set(premium_data.get("premium_usernames", []))
-        
-        # Получаем список всех пользователей
-        global user_tracks
-        if not user_tracks:
-            return
-        
-        current_time = time.time()
-        
-        for user_id in user_tracks.keys():
-            try:
-                # Пропускаем премиум пользователей
-                if user_id in premium_users:
-                    continue
-                
-                # Проверяем, не отправляли ли мы напоминание недавно
-                last_reminder_key = f"last_premium_reminder_{user_id}"
-                last_reminder_time = user_last_request.get(last_reminder_key, 0)
-                
-                if current_time - last_reminder_time >= PREMIUM_NOTIFICATION_INTERVAL:
-                    # Отправляем напоминание
-                    reminder_message = (
-                        f"💎 **Напоминание о премиум функциях**\n\n"
-                        f"🎵 **Ваша коллекция:** {len(user_tracks.get(user_id, []))} треков\n\n"
-                        f"⚡ **С премиумом вы получите:**\n"
-                        f"• Мгновенный доступ к коллекции\n"
-                        f"• Безлимитное хранилище\n"
-                        f"• Высокое качество 320 kbps\n"
-                        f"• Поиск по исполнителям\n\n"
-                        f"💰 **Всего 1 USDT в месяц!**\n"
-                        f"🔗 **Купить:** /buy_premium"
-                    )
-                    
-                    try:
-                        await bot.send_message(user_id, reminder_message, parse_mode="Markdown")
-                        user_last_request[last_reminder_key] = current_time
-                        logging.info(f"✅ Еженедельное напоминание о премиуме отправлено пользователю {user_id}")
-                        
-                        # Небольшая задержка между отправками
-                        await asyncio.sleep(1)
-                        
-                    except Exception as e:
-                        logging.error(f"❌ Ошибка отправки напоминания пользователю {user_id}: {e}")
-                        
-            except Exception as e:
-                logging.error(f"❌ Ошибка обработки пользователя {user_id} для напоминаний: {e}")
-                
-    except Exception as e:
-        logging.error(f"❌ Ошибка отправки еженедельных напоминаний: {e}")
+    """Функция премиум удалена - заглушка"""
+    pass
 
 async def start_cleanup_tasks():
     """Запускает периодические задачи очистки"""
@@ -2262,103 +1750,30 @@ async def by_artist_section(callback: types.CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "premium_features")
 async def show_artist_search_menu(callback: types.CallbackQuery, state: FSMContext):
-    """Показывает форму поиска по исполнителю"""
-    # Быстрый ответ для ускорения
-    await callback.answer("⏳ Обрабатываю...")
-    
-    user_id = str(callback.from_user.id)
-    
-    # Проверяем антиспам
-    is_allowed, time_until = check_antispam(user_id)
-    if not is_allowed:
-        await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
-        return
-    
-    # Проверяем кеш для меню поиска по исполнителю
-    cache_key = f"artist_search_menu_{user_id}"
-    cached_menu = get_cached_metadata(cache_key)
-    
-    if cached_menu:
-        logging.info(f"🎯 Используем кешированное меню поиска по исполнителю для пользователя {user_id}")
-        # Восстанавливаем состояние из кеша
-        await state.set_state(SearchStates.waiting_for_artist)
-        # Отправляем кешированное сообщение
-        await callback.message.answer_photo(
-            media=types.InputMediaPhoto(
-                media=types.FSInputFile("bear.png"),
-                caption=cached_menu.get('caption', "🐻‍❄️ **Поиск по исполнителям**"),
-                reply_markup=back_button
-            )
-        )
-    else:
-        # Устанавливаем состояние ожидания ввода имени исполнителя
-        await state.set_state(SearchStates.waiting_for_artist)
-        
-        # Удаляем предыдущее сообщение для чистоты чата
-        try:
-            await callback.message.delete()
-        except:
-            pass  # Игнорируем ошибки удаления
-        
-        # Отправляем изображение мишки с текстом о поиске по исполнителю
-        try:
-            caption_text = "🐻‍❄️ **Поиск по исполнителям**\n\n🎵 Введите название исполнителя или группы, чьи треки хотите найти.\n\n💡 Примеры:\n• Drake\n• The Weeknd\n• Eminem\n• Coldplay\n• Metallica\n\n🔍 Я найду и загружу для вас лучшие треки этого исполнителя!\n\n⬅ Для возврата нажмите кнопку «Назад»"
-            
-            await callback.message.answer_photo(
-                media=types.InputMediaPhoto(
-                    media=types.FSInputFile("bear.png"),
-                    caption=caption_text
-                ),
-                reply_markup=back_button
-            )
-            
-            # Сохраняем в кеш
-            menu_data = {'caption': caption_text}
-            set_cached_metadata(cache_key, menu_data)
-        except Exception as e:
-            logging.error(f"❌ Ошибка отправки фото: {e}")
-            await callback.message.edit_text(
-                "🐻‍❄️ **Поиск по исполнителям**\n\n"
-                "🎵 Введите название исполнителя или группы, чьи треки хотите найти.\n\n"
-                "💡 Примеры:\n"
-                "• Drake\n"
-                "• The Weeknd\n"
-                "• Eminem\n"
-                "• Coldplay\n"
-                "• Metallica\n\n"
-                "🔍 Я найду и загружу для вас лучшие треки этого исполнителя!\n\n"
-                "⬅ Для возврата нажмите кнопку «Назад»",
-                parse_mode="Markdown",
-                reply_markup=back_button
-            )
+    """Функция премиум удалена - перенаправляет в главное меню"""
+    await callback.answer("❌ Премиум функции отключены")
+    await callback.message.edit_media(
+        media=types.InputMediaPhoto(
+            media=types.FSInputFile("bear.png")
+        ),
+        reply_markup=main_menu
+    )
 
 @dp.callback_query(F.data == "buy_premium")
 async def show_buy_premium_info(callback: types.CallbackQuery):
-    """Простая функция для совместимости со старыми кнопками"""
-    user_id = str(callback.from_user.id)
-    
-    # Проверяем антиспам
-    is_allowed, time_until = check_antispam(user_id)
-    if not is_allowed:
-        await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
-        return
-    
-    # Просто возвращаемся в главное меню
-    try:
-        await callback.message.edit_media(
-            media=types.InputMediaPhoto(
-                media=types.FSInputFile("bear.png")
-            ),
-            reply_markup=main_menu
-        )
-    except Exception as e:
-        logging.error(f"❌ Ошибка возврата в главное меню: {e}")
-        await callback.message.answer("🐻‍❄️ Главное меню", reply_markup=main_menu)
+    """Функция премиум удалена - перенаправляет в главное меню"""
+    await callback.answer("❌ Премиум функции отключены")
+    await callback.message.edit_media(
+        media=types.InputMediaPhoto(
+            media=types.FSInputFile("bear.png")
+        ),
+        reply_markup=main_menu
+    )
 
 @dp.callback_query(F.data == "pay_yoomoney")
 async def pay_premium_yoomoney(callback: types.CallbackQuery):
-    """Простая функция для совместимости со старыми кнопками"""
-    user_id = str(callback.from_user.id)
+    """Функция премиум удалена - заглушка"""
+    await callback.answer("❌ Премиум функции отключены")
     
     # Проверяем антиспам
     is_allowed, time_until = check_antispam(user_id)
@@ -2380,26 +1795,8 @@ async def pay_premium_yoomoney(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "pay_premium")
 async def pay_premium_direct(callback: types.CallbackQuery):
-    """Простая функция для совместимости со старыми кнопками"""
-    user_id = str(callback.from_user.id)
-    
-    # Проверяем антиспам
-    is_allowed, time_until = check_antispam(user_id)
-    if not is_allowed:
-        await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
-        return
-    
-    # Просто возвращаемся в главное меню
-    try:
-        await callback.message.edit_media(
-            media=types.InputMediaPhoto(
-                media=types.FSInputFile("bear.png")
-            ),
-            reply_markup=main_menu
-        )
-    except Exception as e:
-        logging.error(f"❌ Ошибка возврата в главное меню: {e}")
-        await callback.message.answer("🐻‍❄️ Главное меню", reply_markup=main_menu)
+    """Функция премиум удалена - заглушка"""
+    await callback.answer("❌ Премиум функции отключены")
 
 # Упрощенная функция - больше не нужна
 # @dp.message(F.text == "💎 Оплатить через TON кошелек")
@@ -2420,26 +1817,8 @@ async def pay_premium_direct(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "back_to_premium")
 async def back_to_premium_menu(callback: types.CallbackQuery):
-    """Возврат в главное меню (для совместимости со старыми кнопками)"""
-    user_id = str(callback.from_user.id)
-    
-    # Проверяем антиспам
-    is_allowed, time_until = check_antispam(user_id)
-    if not is_allowed:
-        await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
-        return
-    
-    # Просто возвращаемся в главное меню
-    try:
-        await callback.message.edit_media(
-            media=types.InputMediaPhoto(
-                media=types.FSInputFile("bear.png")
-            ),
-            reply_markup=main_menu
-        )
-    except Exception as e:
-        logging.error(f"❌ Ошибка возврата в главное меню: {e}")
-        await callback.message.answer("🐻‍❄️ Главное меню", reply_markup=main_menu)
+    """Функция премиум удалена - заглушка"""
+    await callback.answer("❌ Премиум функции отключены")
 
 # Упрощенная callback функция - больше не нужна
 # @dp.callback_query(F.data == "confirm_payment")
@@ -2461,49 +1840,13 @@ async def back_to_premium_menu(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "back_to_buy_premium")
 async def back_to_buy_premium_callback(callback: types.CallbackQuery):
-    """Простая функция для совместимости со старыми кнопками"""
-    user_id = str(callback.from_user.id)
-    
-    # Проверяем антиспам
-    is_allowed, time_until = check_antispam(user_id)
-    if not is_allowed:
-        await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
-        return
-    
-    # Просто возвращаемся в главное меню
-    try:
-        await callback.message.edit_media(
-            media=types.InputMediaPhoto(
-                media=types.FSInputFile("bear.png")
-            ),
-            reply_markup=main_menu
-        )
-    except Exception as e:
-        logging.error(f"❌ Ошибка возврата в главное меню: {e}")
-        await callback.message.answer("🐻‍❄️ Главное меню", reply_markup=main_menu)
+    """Функция премиум удалена - заглушка"""
+    await callback.answer("❌ Премиум функции отключены")
 
 @dp.callback_query(F.data == "back_to_main_from_buy_premium")
 async def back_to_main_from_buy_premium_callback(callback: types.CallbackQuery):
-    """Возврат в главное меню из inline клавиатуры оплаты"""
-    user_id = str(callback.from_user.id)
-    
-    # Проверяем антиспам
-    is_allowed, time_until = check_antispam(user_id)
-    if not is_allowed:
-        await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
-        return
-    
-    try:
-        await callback.message.edit_media(
-            media=types.InputMediaPhoto(
-                media=types.FSInputFile("bear.png")
-            ),
-            reply_markup=main_menu
-        )
-    except Exception as e:
-        # Если не удалось отправить фото, отправляем обычное сообщение
-        logging.error(f"❌ Ошибка отправки фото: {e}")
-        await callback.message.edit_text("🔙 Возврат в главное меню", reply_markup=main_menu)
+    """Функция премиум удалена - заглушка"""
+    await callback.answer("❌ Премиум функции отключены")
 
 # === Обработчики автоматической оплаты ===
 @dp.pre_checkout_query()
@@ -2516,73 +1859,13 @@ async def successful_payment(message: types.Message):
 
 @dp.message(Command("add_premium"))
 async def add_premium_command(message: types.Message):
-    """Команда для добавления премиум доступа пользователю"""
-    # Проверяем, является ли отправитель администратором
-    user_id = str(message.from_user.id)
-    username = message.from_user.username
-    
-    if not is_admin(user_id, username):
-        await message.answer("❌ У вас нет прав для выполнения этой команды.")
-        return
-    
-    # Парсим аргументы команды
-    args = message.text.split()
-    if len(args) < 2:
-        await message.answer("❌ Использование: /add_premium <user_id или username>")
-        return
-    
-    target = args[1].strip()
-    
-    # Определяем, это ID или username
-    if target.isdigit():
-        # Это ID пользователя
-        success = add_premium_user(user_id=target)
-        if success:
-            await message.answer(f"✅ Премиум доступ добавлен пользователю с ID: {target}")
-        else:
-            await message.answer(f"❌ Ошибка при добавлении премиум доступа пользователю: {target}")
-    else:
-        # Это username
-        success = add_premium_user(username=target)
-        if success:
-            await message.answer(f"✅ Премиум доступ добавлен пользователю: @{target}")
-        else:
-            await message.answer(f"❌ Ошибка при добавлении премиум доступа пользователю: @{target}")
+    """Команда премиум удалена - заглушка"""
+    await message.answer("❌ Премиум функции отключены")
 
 @dp.message(Command("remove_premium"))
 async def remove_premium_command(message: types.Message):
-    """Команда для удаления премиум доступа у пользователя"""
-    # Проверяем, является ли отправитель администратором
-    user_id = str(message.from_user.id)
-    username = message.from_user.username
-    
-    if not is_admin(user_id, username):
-        await message.answer("❌ У вас нет прав для выполнения этой команды.")
-        return
-    
-    # Парсим аргументы команды
-    args = message.text.split()
-    if len(args) < 2:
-        await message.answer("❌ Использование: /remove_premium <user_id или username>")
-        return
-    
-    target = args[1].strip()
-    
-    # Определяем, это ID или username
-    if target.isdigit():
-        # Это ID пользователя
-        success = remove_premium_user(user_id=target)
-        if success:
-            await message.answer(f"✅ Премиум доступ удален у пользователя с ID: {target}")
-        else:
-            await message.answer(f"❌ Ошибка при удалении премиум доступа у пользователя: {target}")
-    else:
-        # Это username
-        success = remove_premium_user(username=target)
-        if success:
-            await message.answer(f"✅ Премиум доступ удален у пользователя: @{target}")
-        else:
-            await message.answer(f"❌ Ошибка при удалении премиум доступа у пользователя: @{target}")
+    """Команда премиум удалена - заглушка"""
+    await message.answer("❌ Премиум функции отключены")
 
 # === Поиск ===
 @dp.callback_query(F.data == "find_track")
