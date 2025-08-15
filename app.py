@@ -65,14 +65,14 @@ def start_bot():
         bot_token = get_bot_token()
         print(f"🔑 Токен бота: {'установлен' if bot_token else 'НЕ установлен'}")
         
-        # Импортируем упрощенную версию бота
-        print("📦 Импортируем music_bot_simple...")
+        # Импортируем основной модуль бота
+        print("📦 Импортируем music_bot...")
         import music_bot
-        print("✅ music_bot_simple импортирован успешно")
+        print("✅ music_bot импортирован успешно")
         
         # Проверяем наличие функции main
-        if not hasattr(music_bot_simple, 'main'):
-            return jsonify({"status": "error", "message": "Функция main не найдена в music_bot_simple"}), 500
+        if not hasattr(music_bot, 'main'):
+            return jsonify({"status": "error", "message": "Функция main не найдена в music_bot"}), 500
         
         print("🔍 Функция main найдена")
         
@@ -81,8 +81,8 @@ def start_bot():
         def run_bot():
             """Запускает асинхронную функцию main в event loop"""
             try:
-                print("🚀 Запускаем asyncio.run(music_bot_simple.main())...")
-                asyncio.run(music_bot_simple.main())
+                print("🚀 Запускаем asyncio.run(music_bot.main())...")
+                asyncio.run(music_bot.main())
             except Exception as e:
                 print(f"❌ Ошибка в run_bot: {e}")
                 import traceback
