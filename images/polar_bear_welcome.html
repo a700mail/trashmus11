@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Polar Bear Music Bot</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #e0f7fa 0%, #f3e5f5 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #333;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        
+        .welcome-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(15px);
+            border-radius: 25px;
+            padding: 50px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            max-width: 500px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .polar-bear {
+            font-size: 120px;
+            margin-bottom: 30px;
+            filter: drop-shadow(0 5px 15px rgba(0, 0, 0, 0.2));
+            animation: float 3s ease-in-out infinite;
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+        
+        .title {
+            font-size: 36px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            background: linear-gradient(45deg, #2196F3, #9C27B0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .subtitle {
+            font-size: 20px;
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 25px;
+        }
+        
+        .features {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 30px;
+        }
+        
+        .feature {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 15px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+            transition: transform 0.3s ease;
+        }
+        
+        .feature:hover {
+            transform: translateY(-3px);
+        }
+        
+        .music-notes {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 24px;
+            animation: bounce 2s infinite;
+        }
+        
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+            40% { transform: translateY(-8px); }
+            60% { transform: translateY(-4px); }
+        }
+        
+        .snowflakes {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+        }
+        
+        .snowflake {
+            position: absolute;
+            color: #fff;
+            font-size: 20px;
+            animation: fall 10s linear infinite;
+        }
+        
+        @keyframes fall {
+            0% { transform: translateY(-100px) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(600px) rotate(360deg); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="snowflakes">
+        <div class="snowflake" style="left: 10%; animation-delay: 0s;">❄</div>
+        <div class="snowflake" style="left: 20%; animation-delay: 2s;">❅</div>
+        <div class="snowflake" style="left: 30%; animation-delay: 4s;">❆</div>
+        <div class="snowflake" style="left: 40%; animation-delay: 6s;">❄</div>
+        <div class="snowflake" style="left: 50%; animation-delay: 8s;">❅</div>
+        <div class="snowflake" style="left: 60%; animation-delay: 1s;">❆</div>
+        <div class="snowflake" style="left: 70%; animation-delay: 3s;">❄</div>
+        <div class="snowflake" style="left: 80%; animation-delay: 5s;">❅</div>
+        <div class="snowflake" style="left: 90%; animation-delay: 7s;">❆</div>
+    </div>
+    
+    <div class="welcome-card">
+        <div class="music-notes">🎵</div>
+        <div class="polar-bear">🐻</div>
+        <div class="title">BearMusic</div>
+        <div class="subtitle">
+            Ваш музыкальный помощник для поиска и скачивания треков
+        </div>
+        
+        <div class="features">
+            <div class="feature">🔍 Поиск треков</div>
+            <div class="feature">💾 Моя музыка</div>
+            <div class="feature">💎 Премиум</div>
+            <div class="feature">🛒 Купить</div>
+        </div>
+    </div>
+</body>
+</html>

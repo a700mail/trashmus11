@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: telegram-music-bot
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.16
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: GOOGLE_DRIVE_CREDENTIALS
+        sync: false
+      - key: GOOGLE_DRIVE_TOKEN
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: WEBHOOK_URL
+        sync: false
