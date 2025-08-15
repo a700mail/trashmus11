@@ -10,8 +10,11 @@
 В Render Dashboard добавьте следующие переменные окружения:
 
 ### Основные настройки бота:
-- `BOT_TOKEN` - токен вашего Telegram бота от @BotFather
+- `TELEGRAM_BOT_TOKEN` - токен вашего Telegram бота от @BotFather (рекомендуется)
+- `BOT_TOKEN` - альтернативное название для токена бота
 - `WEBHOOK_URL` - URL вашего сервиса на Render (например: https://your-app.onrender.com)
+
+**Примечание:** Бот поддерживает оба варианта названия токена. Если установить обе переменные, приоритет у `TELEGRAM_BOT_TOKEN`.
 
 ### Настройки платежей:
 - `PAYMENT_PROVIDER_TOKEN` - токен платежного провайдера
@@ -38,8 +41,8 @@
 - `GET /` - статус сервиса и список функций
 - `GET /ping` - keep-alive endpoint
 - `GET /status` - детальный статус и конфигурация
-- `POST /start_bot` - запуск бота
-- `POST /stop_bot` - остановка бота
+- `GET/POST /start_bot` - запуск бота (можно через браузер)
+- `GET/POST /stop_bot` - остановка бота (можно через браузер)
 - `POST /webhook` - webhook для Telegram
 
 ## Настройка webhook в Telegram
@@ -64,3 +67,4 @@ https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url=https://your-app.onr
 - Keep-alive автоматически поддерживает сервис активным
 - Статус можно проверить через `/status` endpoint
 - Проверка конфигурации через веб-интерфейс
+- Отображение типа используемой переменной токена

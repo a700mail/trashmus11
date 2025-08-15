@@ -10,6 +10,11 @@ app = Flask(__name__)
 bot_running = False
 bot_thread = None
 
+# Функция для получения токена бота
+def get_bot_token():
+    """Получает токен бота из переменных окружения"""
+    return os.getenv('TELEGRAM_BOT_TOKEN') or os.getenv('BOT_TOKEN')
+
 @app.route('/')
 def home():
     """Главная страница"""
@@ -45,7 +50,7 @@ def webhook():
         print(f"Webhook error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/start_bot', methods=['POST'])
+@app.route('/start_bot', methods=['POST', 'GET'])
 def start_bot():
     """Запуск бота"""
     global bot_running, bot_thread
@@ -64,7 +69,7 @@ def start_bot():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/stop_bot', methods=['POST'])
+@app.route('/stop_bot', methods=['POST', 'GET'])
 def stop_bot():
     """Остановка бота"""
     global bot_running, bot_thread
@@ -84,12 +89,14 @@ def stop_bot():
 @app.route('/status')
 def status():
     """Статус сервиса"""
+    bot_token = get_bot_token()
     return jsonify({
         "service": "running",
         "bot": "running" if bot_running else "stopped",
         "timestamp": time.time(),
         "environment": {
-            "bot_token_set": bool(os.getenv('BOT_TOKEN')),
+            "bot_token_set": bool(bot_token),
+            "bot_token_type": "TELEGRAM_BOT_TOKEN" if os.getenv('TELEGRAM_BOT_TOKEN') else "BOT_TOKEN" if os.getenv('BOT_TOKEN') else "none",
             "payment_token_set": bool(os.getenv('PAYMENT_PROVIDER_TOKEN')),
             "yoomoney_configured": all([
                 os.getenv('YOOMONEY_CLIENT_ID'),
