@@ -6059,7 +6059,7 @@ async def check_yoomoney_payment_callback(callback: types.CallbackQuery):
                 await callback.answer("✅ Премиум доступ активирован!", show_alert=True)
                 logging.info(f"✅ Премиум доступ активирован для пользователя {user_id} через YooMoney")
                 
-            else:
+                else:
                 await callback.answer("❌ Ошибка активации премиума. Обратитесь в поддержку.", show_alert=True)
         else:
             # Платеж не подтвержден
@@ -6069,7 +6069,7 @@ async def check_yoomoney_payment_callback(callback: types.CallbackQuery):
                 show_alert=True
             )
             
-    except Exception as e:
+            except Exception as e:
         logging.error(f"❌ Ошибка проверки оплаты YooMoney: {e}")
         await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
 

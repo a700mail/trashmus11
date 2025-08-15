@@ -47,6 +47,23 @@ def status():
     """Алиас для /health для совместимости"""
     return health()
 
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    """Webhook endpoint для Telegram Bot API"""
+    try:
+        # Получаем обновление от Telegram
+        update = request.get_json()
+        
+        # Обрабатываем обновление в отдельном потоке
+        if bot_thread and bot_running:
+            # Здесь можно добавить обработку обновлений
+            logger.info(f"Received webhook update: {update.get('update_id', 'unknown')}")
+        
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        logger.error(f"Webhook error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 def run_bot_in_thread():
     """Запускает бота в отдельном потоке с правильной обработкой асинхронности"""
     try:
