@@ -22,7 +22,15 @@ def home():
     return jsonify({
         "status": "running",
         "bot_status": "running" if bot_running else "stopped",
-        "message": "Telegram Music Bot is running on Render"
+        "message": "Telegram Music Bot is running on Render",
+        "endpoints": {
+            "home": "/",
+            "health": "/health",
+            "status": "/status",
+            "bot_status": "/bot_status",
+            "start_bot": "/start_bot (POST)",
+            "stop_bot": "/stop_bot (POST)"
+        }
     })
 
 @app.route('/health')
@@ -33,7 +41,12 @@ def health():
         "bot_status": "running" if bot_running else "stopped"
     })
 
-@app.route('/start_bot', methods=['POST'])
+@app.route('/status')
+def status():
+    """Алиас для /health для совместимости"""
+    return health()
+
+@app.route('/start_bot', methods=['GET', 'POST'])
 def start_bot():
     global bot_thread, bot_running
     
@@ -53,7 +66,7 @@ def start_bot():
         logger.error(f"Failed to start bot: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/stop_bot', methods=['POST'])
+@app.route('/stop_bot', methods=['GET', 'POST'])
 def stop_bot():
     global bot_running
     
@@ -69,8 +82,31 @@ def stop_bot():
 def bot_status():
     return jsonify({
         "bot_running": bot_running,
-        "bot_thread_alive": bot_thread.is_alive() if bot_thread else False
+        "bot_thread_alive": bot_thread.is_alive() if bot_thread else False,
+        "timestamp": time.time()
     })
+
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({
+        "error": "Endpoint not found",
+        "available_endpoints": {
+            "home": "/",
+            "health": "/health", 
+            "status": "/status",
+            "bot_status": "/bot_status",
+            "start_bot": "/start_bot (GET/POST)",
+            "stop_bot": "/stop_bot (GET/POST)"
+        }
+    }), 404
+
+@app.errorhandler(405)
+def method_not_allowed(error):
+    return jsonify({
+        "error": "Method not allowed",
+        "message": "This endpoint supports both GET and POST methods",
+        "endpoint": request.endpoint
+    }), 405
 
 if __name__ == '__main__':
     # Автоматически запускаем бота при старте приложения
