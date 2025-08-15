@@ -276,6 +276,12 @@ async def task_cleanup_tasks():
     # Проверяем целостность файлов премиум пользователей
     await check_premium_files_integrity()
 
+async def task_tracks_optimization():
+    """Обертка для оптимизации треков"""
+    await cleanup_old_tracks_async()
+    # Оптимизируем файл треков
+    optimize_tracks_file()
+
 # === СТАРЫЕ ФУНКЦИИ ЗАПУСКА ФОНОВЫХ ЗАДАЧ (ЗАМЕНЯЮТСЯ) ===
 
 # Запускаем периодическую очистку антиспама
@@ -308,6 +314,7 @@ def start_background_tasks():
         asyncio.create_task(run_periodic_task("Очистка файлов", task_file_cleanup, 3600))
         asyncio.create_task(run_periodic_task("Мониторинг премиума", task_premium_monitoring, 3600))
         asyncio.create_task(run_periodic_task("Задачи очистки", task_cleanup_tasks, 3600))
+        asyncio.create_task(run_periodic_task("Оптимизация треков", task_tracks_optimization, 7200))  # Каждые 2 часа
         
         # Запускаем мониторинг статуса задач
         asyncio.create_task(log_task_status())
@@ -462,6 +469,56 @@ def save_json(path, data):
         
     except Exception as e:
         logging.error(f"❌ Ошибка сохранения {path}: {e}")
+        return False
+
+async def save_json_async(path, data):
+    """Асинхронная версия save_json для предотвращения блокировки"""
+    if not path:
+        logging.error("❌ save_json_async: путь не указан")
+        return False
+        
+    try:
+        # Выполняем сохранение в отдельном потоке
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, save_json, path, data)
+        return result
+    except Exception as e:
+        logging.error(f"❌ Ошибка асинхронного сохранения {path}: {e}")
+        return False
+
+def save_json_optimized(path, data):
+    """Оптимизированная версия save_json с сжатием и проверкой размера"""
+    if not path:
+        logging.error("❌ save_json_optimized: путь не указан")
+        return False
+        
+    try:
+        # Создаем директорию, если она не существует
+        dir_path = os.path.dirname(path)
+        if dir_path:
+            os.makedirs(dir_path, exist_ok=True)
+        
+        # Проверяем размер данных
+        data_size = len(json.dumps(data, ensure_ascii=False))
+        if data_size > 10 * 1024 * 1024:  # Больше 10MB
+            logging.warning(f"⚠️ Большой файл данных: {data_size / (1024*1024):.2f} MB")
+            
+            # Удаляем старые записи, если файл слишком большой
+            if isinstance(data, dict) and len(data) > 1000:
+                # Оставляем только последние 800 записей
+                keys_to_keep = list(data.keys())[-800:]
+                data = {k: data[k] for k in keys_to_keep}
+                logging.info(f"🧹 Очищены старые записи, оставлено {len(data)} записей")
+        
+        # Сохраняем с оптимизированным форматированием
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
+        
+        logging.info(f"✅ Данные успешно сохранены в {path} (размер: {data_size / 1024:.1f} KB)")
+        return True
+        
+    except Exception as e:
+        logging.error(f"❌ Ошибка оптимизированного сохранения {path}: {e}")
         return False
 
 def is_premium_user(user_id: str, username: str = None) -> bool:
@@ -806,12 +863,37 @@ def save_tracks():
             logging.error(f"❌ save_tracks: user_tracks не является словарем: {type(user_tracks)}")
             return False
         
-        save_json(TRACKS_FILE, user_tracks)
+        # Используем оптимизированное сохранение
+        save_json_optimized(TRACKS_FILE, user_tracks)
         logging.info("✅ Треки успешно сохранены")
         return True
         
     except Exception as e:
         logging.error(f"❌ Ошибка сохранения треков: {e}")
+        return False
+
+async def save_tracks_async():
+    """Асинхронная версия save_tracks для предотвращения блокировки"""
+    global user_tracks
+    try:
+        # Проверяем, что user_tracks не None
+        if user_tracks is None:
+            logging.warning("⚠️ save_tracks_async: user_tracks был None, инициализируем пустым словарем")
+            user_tracks = {}
+        
+        # Проверяем, что user_tracks является словарем
+        if not isinstance(user_tracks, dict):
+            logging.error(f"❌ save_tracks_async: user_tracks не является словарем: {type(user_tracks)}")
+            return False
+        
+        # Используем асинхронное сохранение
+        result = await save_json_async(TRACKS_FILE, user_tracks)
+        if result:
+            logging.info("✅ Треки успешно сохранены асинхронно")
+        return result
+        
+    except Exception as e:
+        logging.error(f"❌ Ошибка асинхронного сохранения треков: {e}")
         return False
 
 def cleanup_track_cache():
@@ -827,6 +909,84 @@ def cleanup_track_cache():
             logging.info(f"🧹 Кэш метаданных очищен: удалено {len(keys_to_remove)} записей")
     except Exception as e:
         logging.error(f"❌ Ошибка очистки кэша метаданных: {e}")
+
+async def cleanup_old_tracks_async():
+    """Асинхронно очищает старые треки для экономии места"""
+    global user_tracks
+    try:
+        if not user_tracks:
+            return
+        
+        current_time = time.time()
+        max_age_days = 30  # Максимальный возраст трека в днях
+        max_age_seconds = max_age_days * 24 * 3600
+        
+        total_removed = 0
+        
+        for user_id, tracks in user_tracks.items():
+            if not isinstance(tracks, list):
+                continue
+                
+            # Фильтруем треки по возрасту
+            original_count = len(tracks)
+            tracks[:] = [
+                track for track in tracks
+                if isinstance(track, dict) and 
+                (not track.get('added_at') or 
+                 (current_time - datetime.fromisoformat(track['added_at']).timestamp()) < max_age_seconds)
+            ]
+            
+            removed_count = original_count - len(tracks)
+            total_removed += removed_count
+            
+            if removed_count > 0:
+                logging.info(f"🧹 Удалено {removed_count} старых треков для пользователя {user_id}")
+        
+        if total_removed > 0:
+            logging.info(f"🧹 Всего удалено {total_removed} старых треков")
+            # Асинхронно сохраняем изменения
+            asyncio.create_task(save_tracks_async())
+        
+    except Exception as e:
+        logging.error(f"❌ Ошибка очистки старых треков: {e}")
+
+def optimize_tracks_file():
+    """Оптимизирует файл треков для улучшения производительности"""
+    try:
+        if not os.path.exists(TRACKS_FILE):
+            return
+        
+        # Проверяем размер файла
+        file_size = os.path.getsize(TRACKS_FILE)
+        if file_size < 1024 * 1024:  # Меньше 1MB
+            return
+        
+        logging.info(f"🔧 Оптимизация файла треков (размер: {file_size / (1024*1024):.2f} MB)")
+        
+        # Загружаем данные
+        tracks_data = load_json(TRACKS_FILE, {})
+        if not tracks_data:
+            return
+        
+        # Создаем резервную копию
+        backup_file = f"{TRACKS_FILE}.backup"
+        save_json(backup_file, tracks_data)
+        
+        # Очищаем старые записи
+        for user_id, tracks in tracks_data.items():
+            if isinstance(tracks, list) and len(tracks) > 100:
+                # Оставляем только последние 100 треков
+                tracks_data[user_id] = tracks[-100:]
+                logging.info(f"🧹 Ограничен список треков для пользователя {user_id}: {len(tracks)} -> 100")
+        
+        # Сохраняем оптимизированные данные
+        save_json_optimized(TRACKS_FILE, tracks_data)
+        
+        new_size = os.path.getsize(TRACKS_FILE)
+        logging.info(f"✅ Файл треков оптимизирован: {file_size / (1024*1024):.2f} MB -> {new_size / (1024*1024):.2f} MB")
+        
+    except Exception as e:
+        logging.error(f"❌ Ошибка оптимизации файла треков: {e}")
 
 # Функция preload_track_metadata удалена - больше не нужна
 
@@ -1764,6 +1924,49 @@ def set_cached_search(query, results):
         
     except Exception as e:
         logging.error(f"❌ Ошибка в set_cached_search: {e}")
+        return False
+
+# === АСИНХРОННЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С ТРЕКАМИ ===
+async def add_track_to_collection_async(user_id: str, track_data: dict):
+    """Асинхронно добавляет трек в коллекцию пользователя"""
+    global user_tracks
+    try:
+        if not user_id or not track_data:
+            logging.error("❌ add_track_to_collection_async: некорректные параметры")
+            return False
+        
+        # Инициализируем user_tracks если нужно
+        if user_tracks is None:
+            user_tracks = {}
+        
+        if user_id not in user_tracks:
+            user_tracks[user_id] = []
+        
+        # Проверяем, не добавлен ли уже трек
+        track_exists = any(t.get('title') == track_data.get('title') for t in user_tracks[user_id])
+        if track_exists:
+            logging.info(f"⚠️ Трек уже в коллекции пользователя {user_id}")
+            return True
+        
+        # Добавляем трек
+        track_to_save = {
+            'title': track_data.get('title', 'Неизвестный трек'),
+            'original_url': track_data.get('url', ''),
+            'duration': track_data.get('duration', 0),
+            'uploader': track_data.get('uploader', 'Неизвестный исполнитель'),
+            'added_at': datetime.now().isoformat()
+        }
+        
+        user_tracks[user_id].append(track_to_save)
+        
+        # Асинхронно сохраняем в фоне
+        asyncio.create_task(save_tracks_async())
+        
+        logging.info(f"✅ Трек асинхронно добавлен в коллекцию пользователя {user_id}")
+        return True
+        
+    except Exception as e:
+        logging.error(f"❌ Ошибка асинхронного добавления трека: {e}")
         return False
 
 # === Асинхронная обёртка для yt_dlp ===
