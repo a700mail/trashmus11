@@ -2635,7 +2635,7 @@ async def search_music(message: types.Message, state: FSMContext):
     if re.match(yt_url_pattern, query):
         # асинхронно сохраняем метаданные в background (не блокируем основной цикл)
         asyncio.create_task(download_track_from_url(message.from_user.id, query))
-        return await message.answer("✅ Трек добавлен в вашу коллекцию! Теперь вы можете скачать его в разделе «Моя музыка».", reply_markup=main_menu)
+        return await message.answer("✅ Трек добавлен в вашу коллекцию!", show_alert=True)
 
     search_msg = await message.answer("🔍 Поиск...")
 
@@ -3214,7 +3214,7 @@ async def download_track(callback: types.CallbackQuery):
         
         if success:
             # Показываем мгновенный ответ
-            await callback.answer("✅ Трек будет добавлен в плейлист!", show_alert=False)
+            await callback.answer("✅ Трек будет добавлен в плейлист!", show_alert=True)
         else:
             await callback.answer("❌ Ошибка добавления трека", show_alert=True)
         
@@ -3255,7 +3255,7 @@ async def download_soundcloud_from_search(callback: types.CallbackQuery):
         
         if success:
             # Показываем мгновенный ответ
-            await callback.answer("✅ Трек будет добавлен в плейлист!", show_alert=False)
+            await callback.answer("✅ Трек будет добавлен в плейлист!", show_alert=True)
         else:
             await callback.answer("❌ Ошибка добавления трека", show_alert=True)
         
@@ -4202,7 +4202,7 @@ async def play_track(callback: types.CallbackQuery):
                     await delete_temp_file(temp_file_path)
                     
                     # Показываем краткое уведомление о успешной отправке
-                    await callback.answer("✅ Трек отправлен!")
+                    await callback.answer("✅ Трек отправлен!", show_alert=True)
                 else:
                     await callback.answer("❌ Не удалось скачать трек.")
                     
@@ -4476,7 +4476,7 @@ async def delete_track(callback: types.CallbackQuery):
             # Показываем обновленный список треков
             await show_updated_tracks_list(callback.message, user_id, tracks)
         
-        await callback.answer("✅ Трек удален.")
+        await callback.answer("✅ Трек удален.", show_alert=True)
         
     except ValueError as e:
         logging.error(f"❌ Ошибка парсинга индекса трека: {e}")
