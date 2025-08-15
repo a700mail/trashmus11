@@ -2579,15 +2579,15 @@ async def search_music(message: types.Message, state: FSMContext):
     if re.match(yt_url_pattern, query):
         # асинхронно сохраняем метаданные в background (не блокируем основной цикл)
         asyncio.create_task(download_track_from_url(message.from_user.id, query))
-        return await message.answer("✅ Трек добавлен в вашу коллекцию! Теперь вы можете скачать его в разделе «Моя музыка».", reply_markup=main_menu)
+        return await message.answer("✅ Трек добавлен в вашу коллекцию! Теперь вы можете скачать его в разделе «Моя музыка».", reply_markup=main_menu")
 
-            search_msg = await message.answer("🔍 Поиск...")
+    search_msg = await message.answer("🔍 Поиск...")
 
-        cached = get_cached_search(query)
-        if cached:
-            # Удаляем сообщение "Поиск.." если используем кэш
-            await search_msg.delete()
-            return await send_search_results(message.chat.id, cached)
+    cached = get_cached_search(query)
+    if cached:
+        # Удаляем сообщение "Поиск.." если используем кэш
+        await search_msg.delete()
+        return await send_search_results(message.chat.id, cached)
     try:
         # Выполняем поиск на YouTube и SoundCloud параллельно
         async def search_youtube(q):
