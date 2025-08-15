@@ -6961,4 +6961,11 @@ async def download_track_from_url_with_priority(user_id: str, url: str, is_premi
         return None
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Проверяем, что мы в главном потоке
+    try:
+        asyncio.run(main())
+    except RuntimeError as e:
+        if "set_wakeup_fd only works in main thread" in str(e):
+            logging.warning("⚠️ Запуск в дочернем потоке - пропускаем asyncio.run")
+        else:
+            raise
