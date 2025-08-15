@@ -1,7 +1,0 @@
-aiogram
-yt-dlp
-browser-cookie3
-requests
-aiohttp
-python-dotenv
-flask
