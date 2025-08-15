@@ -62,19 +62,6 @@ git push origin main
 BOT_TOKEN=your_telegram_bot_token_here
 ```
 
-#### Настройки платежей:
-```
-PAYMENT_PROVIDER_TOKEN=your_payment_provider_token
-YOOMONEY_CLIENT_ID=your_yoomoney_client_id
-YOOMONEY_CLIENT_SECRET=your_yoomoney_client_secret
-YOOMONEY_REDIRECT_URI=your_yoomoney_redirect_uri
-YOOMONEY_ACCOUNT=your_yoomoney_account
-CARD_NUMBER=your_card_number
-TON_WALLET=your_ton_wallet_address
-PAYMENT_AMOUNT_USD=1.00
-PAYMENT_AMOUNT_USDT=1.00
-```
-
 ### 3.2 Как получить API ключи
 
 #### Telegram Bot Token:
@@ -82,12 +69,6 @@ PAYMENT_AMOUNT_USDT=1.00
 2. Отправьте команду `/newbot`
 3. Следуйте инструкциям для создания бота
 4. Скопируйте полученный токен
-
-#### YooMoney API:
-1. Зарегистрируйтесь на [yoomoney.ru](https://yoomoney.ru)
-2. Перейдите в раздел "Разработчикам"
-3. Создайте новое приложение
-4. Получите Client ID и Client Secret
 
 ## 🚀 Шаг 4: Развертывание
 

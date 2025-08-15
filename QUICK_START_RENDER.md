@@ -24,15 +24,6 @@ cd trashmus11
 Добавьте в раздел **"Environment"**:
 ```
 BOT_TOKEN=your_bot_token_here
-PAYMENT_PROVIDER_TOKEN=your_payment_token_here
-YOOMONEY_CLIENT_ID=your_yoomoney_client_id
-YOOMONEY_CLIENT_SECRET=your_yoomoney_client_secret
-YOOMONEY_REDIRECT_URI=https://your-service.onrender.com/yoomoney/callback
-YOOMONEY_ACCOUNT=your_yoomoney_account
-CARD_NUMBER=XXXX XXXX XXXX XXXX
-TON_WALLET=your_ton_wallet_address
-PAYMENT_AMOUNT_USD=1.00
-PAYMENT_AMOUNT_USDT=1.00
 ```
 
 ### 5. Создание сервиса

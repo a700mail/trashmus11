@@ -12,53 +12,6 @@
 BOT_TOKEN=your_telegram_bot_token_here
 
 # ========================================
-# НАСТРОЙКИ ПЛАТЕЖЕЙ
-# ========================================
-
-# Токен платежного провайдера
-PAYMENT_PROVIDER_TOKEN=your_payment_provider_token_here
-
-# ========================================
-# НАСТРОЙКИ YOOMONEY
-# ========================================
-
-# Client ID для YooMoney API
-YOOMONEY_CLIENT_ID=your_yoomoney_client_id_here
-
-# Client Secret для YooMoney API
-YOOMONEY_CLIENT_SECRET=your_yoomoney_client_secret_here
-
-# URI перенаправления для YooMoney
-YOOMONEY_REDIRECT_URI=https://your-domain.com/yoomoney/callback
-
-# Номер счета YooMoney
-YOOMONEY_ACCOUNT=your_yoomoney_account_number_here
-
-# ========================================
-# НАСТРОЙКИ КАРТЫ
-# ========================================
-
-# Номер карты для приема платежей (формат: XXXX XXXX XXXX XXXX)
-CARD_NUMBER=XXXX XXXX XXXX XXXX
-
-# ========================================
-# НАСТРОЙКИ TON КОШЕЛЬКА
-# ========================================
-
-# Адрес TON кошелька для приема USDT
-TON_WALLET=your_ton_wallet_address_here
-
-# ========================================
-# СУММЫ ПЛАТЕЖЕЙ
-# ========================================
-
-# Сумма платежа в USD
-PAYMENT_AMOUNT_USD=1.00
-
-# Сумма платежа в USDT
-PAYMENT_AMOUNT_USDT=1.00
-
-# ========================================
 # ДОПОЛНИТЕЛЬНЫЕ НАСТРОЙКИ
 # ========================================
 
@@ -80,21 +33,6 @@ CLEANUP_LOGGING=true
 
 # Пример BOT_TOKEN:
 # BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
-
-# Пример YOOMONEY_CLIENT_ID:
-# YOOMONEY_CLIENT_ID=1234567890abcdef1234567890abcdef
-
-# Пример YOOMONEY_CLIENT_SECRET:
-# YOOMONEY_CLIENT_SECRET=abcdef1234567890abcdef1234567890
-
-# Пример YOOMONEY_REDIRECT_URI:
-# YOOMONEY_REDIRECT_URI=https://your-bot.onrender.com/yoomoney/callback
-
-# Пример CARD_NUMBER:
-# CARD_NUMBER=1234 5678 9012 3456
-
-# Пример TON_WALLET:
-# TON_WALLET=EQD4FPq-PRDieyQKkizFTRtSDyucUIqrj0v_zXJmqaDp6_0t
 
 # ========================================
 # ВАЖНЫЕ ЗАМЕЧАНИЯ
