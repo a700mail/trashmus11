@@ -2554,7 +2554,7 @@ async def search_by_artist(message: types.Message, state: FSMContext):
         async for msg in message.bot.get_chat_history(message.chat.id, limit=10):
             if msg.text == "🌨️ Введите исполнителя":
                 await msg.delete()
-                                break
+                break
     except:
         pass  # Игнорируем ошибки удаления
     
