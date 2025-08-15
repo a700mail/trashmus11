@@ -4,15 +4,13 @@ services:
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: python app.py
+    startCommand: python web_service.py
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.9.16
-      - key: RENDER
-        value: true
-      - key: TELEGRAM_BOT_TOKEN
-        sync: false
       - key: BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: WEBHOOK_URL
         sync: false
+      - key: RENDER
+        value: true

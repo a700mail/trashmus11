@@ -3,12 +3,14 @@ import logging
 import os
 import signal
 import sys
+import threading
+import time
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 import yt_dlp
-import time
 from datetime import datetime
+from flask import Flask, request, jsonify
 
 # Настройка логирования
 logging.basicConfig(
@@ -27,11 +29,102 @@ if not BOT_TOKEN:
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
+# Инициализация Flask
+app = Flask(__name__)
+
 # Глобальные переменные
 user_tracks = {}
 user_last_request = {}
 
-# === ОСНОВНЫЕ КОМАНДЫ ===
+# === FLASK ROUTES ===
+
+@app.route('/')
+def home():
+    """Главная страница"""
+    return jsonify({
+        "status": "Telegram Music Bot Service",
+        "bot_status": "running",
+        "message": "Bot is active and responding",
+        "features": [
+            "YouTube music download",
+            "SoundCloud support",
+            "Music search",
+            "User collections"
+        ]
+    })
+
+@app.route('/ping')
+def ping():
+    """Эндпоинт для keep-alive"""
+    return jsonify({"status": "pong", "timestamp": time.time()})
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    """Webhook для Telegram Bot API"""
+    try:
+        data = request.get_json()
+        logger.info(f"Webhook received: {data}")
+        
+        # Обрабатываем webhook через aiogram
+        asyncio.create_task(handle_webhook(data))
+        
+        return jsonify({"status": "ok", "message": "Webhook received successfully"})
+    except Exception as e:
+        logger.error(f"Webhook error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/status')
+def status():
+    """Статус сервиса"""
+    return jsonify({
+        "service": "running",
+        "bot": "running",
+        "timestamp": time.time(),
+        "environment": {
+            "bot_token_set": bool(BOT_TOKEN),
+            "bot_token_type": "TELEGRAM_BOT_TOKEN" if os.getenv('TELEGRAM_BOT_TOKEN') else "BOT_TOKEN" if os.getenv('BOT_TOKEN') else "none"
+        }
+    })
+
+async def handle_webhook(data):
+    """Обработка webhook данных"""
+    try:
+        # Создаем объект Update из данных webhook
+        from aiogram.types import Update
+        update = Update(**data)
+        
+        # Обрабатываем через диспетчер
+        await dp.feed_update(bot, update)
+        
+    except Exception as e:
+        logger.error(f"Error handling webhook: {e}")
+
+# === KEEP ALIVE ===
+
+def keep_alive():
+    """Функция для поддержания активности веб-сервиса на Render"""
+    while True:
+        try:
+            webhook_url = os.getenv('WEBHOOK_URL')
+            if webhook_url:
+                base_url = webhook_url.replace('/webhook', '')
+                ping_url = f"{base_url}/ping"
+                import requests
+                response = requests.get(ping_url, timeout=10)
+                logger.info(f"Keep-alive ping sent: {response.status_code}")
+            else:
+                logger.info("WEBHOOK_URL not set, skipping keep-alive")
+        except Exception as e:
+            logger.error(f"Keep-alive error: {e}")
+        time.sleep(20)
+
+def start_keep_alive():
+    """Запускает keep-alive в отдельном потоке"""
+    keep_alive_thread = threading.Thread(target=keep_alive, daemon=True)
+    keep_alive_thread.start()
+    logger.info("Keep-alive thread started")
+
+# === TELEGRAM BOT COMMANDS ===
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
@@ -284,6 +377,22 @@ async def main():
     logger.info("🚀 Запуск Music Bot...")
     
     try:
+        # Запускаем keep-alive
+        start_keep_alive()
+        
+        # Получаем порт из переменной окружения (для Render)
+        port = int(os.environ.get('PORT', 5000))
+        
+        logger.info(f"Starting Flask app on port {port}")
+        logger.info("Keep-alive service started")
+        
+        # Запускаем Flask в отдельном потоке
+        def run_flask():
+            app.run(host='0.0.0.0', port=port, debug=False)
+        
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+        
         # Запускаем бота
         logger.info("✅ Бот запущен успешно!")
         await dp.start_polling(bot)
