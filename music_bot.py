@@ -4186,8 +4186,8 @@ async def play_track(callback: types.CallbackQuery):
                 await callback.answer("❌ Ссылка для скачивания не найдена.", show_alert=True)
                 return
             
-            # Показываем сообщение о скачивании и сохраняем его ID
-            loading_msg = await callback.message.edit_text("⏳ Скачиваю трек...")
+            # Показываем уведомление о скачивании без изменения сообщения с плейлистом
+            await callback.answer("⏳ Скачиваю трек...", show_alert=False)
             
             try:
                 # Скачиваем трек заново (как в "Скачать всё")
@@ -4201,28 +4201,12 @@ async def play_track(callback: types.CallbackQuery):
                     # Удаляем временный файл после успешной отправки
                     await delete_temp_file(temp_file_path)
                     
-                    # Удаляем надпись "⏳ Скачиваю трек..." после успешной отправки
-                    try:
-                        await loading_msg.delete()
-                    except:
-                        pass  # Игнорируем ошибки удаления
-                    
                     # Показываем краткое уведомление о успешной отправке
                     await callback.answer("✅ Трек отправлен!")
                 else:
-                    # Удаляем надпись "⏳ Скачиваю трек..." при ошибке
-                    try:
-                        await loading_msg.delete()
-                    except:
-                        pass
                     await callback.answer("❌ Не удалось скачать трек.")
                     
             except Exception as e:
-                # Удаляем надпись "⏳ Скачиваю трек..." при ошибке
-                try:
-                    await loading_msg.delete()
-                except:
-                    pass
                 logging.error(f"❌ Ошибка при скачивании/отправке трека {title}: {e}")
                 await callback.answer("❌ Ошибка при скачивании трека.")
 
