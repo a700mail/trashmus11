@@ -185,7 +185,7 @@ def method_not_allowed(error):
     }), 405
 
 def keep_alive():
-    """Keep alive функция для предотвращения засыпания Render - запросы раз в минуту"""
+    """Keep alive функция для предотвращения засыпания Render - запросы каждые 40 секунд"""
     while True:
         try:
             # Делаем запрос к собственному health endpoint
@@ -198,8 +198,8 @@ def keep_alive():
             except Exception as e:
                 logger.warning(f"⚠️ Health check не удался: {e}")
             
-            # Ждем 60 секунд до следующего keep alive (раз в минуту)
-            time.sleep(60)
+            # Ждем 40 секунд до следующего keep alive
+            time.sleep(40)
             
         except Exception as e:
             logger.error(f"❌ Ошибка в keep alive: {e}")

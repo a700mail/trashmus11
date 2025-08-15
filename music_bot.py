@@ -1648,8 +1648,8 @@ async def back_to_main_menu(callback: types.CallbackQuery):
             logging.info(f"🎯 Используем кешированное главное меню для пользователя {user_id}")
             # Восстанавливаем главное меню из кеша
             await callback.message.edit_media(
-                media=types.InputMediaPhoto(
-                    media=types.FSInputFile("bear.png")
+                media=types.InputMediaVideo(
+                    media=types.FSInputFile("beer.mp4")
                 ),
                 reply_markup=main_menu
             )
@@ -1657,9 +1657,9 @@ async def back_to_main_menu(callback: types.CallbackQuery):
             # Удаляем предыдущее inline-сообщение
             await callback.message.delete()
             
-            # Отправляем изображение мишки без текста, только с меню
-            await callback.message.answer_photo(
-                photo=types.FSInputFile("bear.png"),
+            # Отправляем видео без текста, только с меню
+            await callback.message.answer_video(
+                video=types.FSInputFile("beer.mp4"),
                 reply_markup=main_menu
             )
             
@@ -1669,8 +1669,8 @@ async def back_to_main_menu(callback: types.CallbackQuery):
     except Exception as e:
         # Если что-то пошло не так, просто отправляем главное меню
         try:
-            await callback.message.answer_photo(
-                photo=types.FSInputFile("bear.png"),
+            await callback.message.answer_video(
+                video=types.FSInputFile("beer.mp4"),
                 reply_markup=main_menu
             )
         except Exception as photo_error:
@@ -1688,15 +1688,15 @@ async def send_welcome(message: types.Message):
     if cached_welcome:
         logging.info(f"🎯 Используем кешированное приветственное сообщение для пользователя {user_id}")
         # Восстанавливаем приветственное сообщение из кеша
-        await message.answer_photo(
-            photo=types.FSInputFile("bear.png"),
+        await message.answer_video(
+            video=types.FSInputFile("beer.mp4"),
             reply_markup=main_menu
         )
     else:
-        # Отправляем изображение мишки без текста, только с меню
+        # Отправляем видео без текста, только с меню
         try:
-            await message.answer_photo(
-                photo=types.FSInputFile("bear.png"),
+            await message.answer_video(
+                video=types.FSInputFile("beer.mp4"),
                 reply_markup=main_menu
             )
             
@@ -1753,8 +1753,8 @@ async def show_artist_search_menu(callback: types.CallbackQuery, state: FSMConte
     """Функция премиум удалена - перенаправляет в главное меню"""
     await callback.answer("❌ Премиум функции отключены")
     await callback.message.edit_media(
-        media=types.InputMediaPhoto(
-            media=types.FSInputFile("bear.png")
+        media=types.InputMediaVideo(
+            media=types.FSInputFile("beer.mp4")
         ),
         reply_markup=main_menu
     )
@@ -1764,8 +1764,8 @@ async def show_buy_premium_info(callback: types.CallbackQuery):
     """Функция премиум удалена - перенаправляет в главное меню"""
     await callback.answer("❌ Премиум функции отключены")
     await callback.message.edit_media(
-        media=types.InputMediaPhoto(
-            media=types.FSInputFile("bear.png")
+        media=types.InputMediaVideo(
+            media=types.FSInputFile("beer.mp4")
         ),
         reply_markup=main_menu
     )
@@ -1784,8 +1784,8 @@ async def pay_premium_yoomoney(callback: types.CallbackQuery):
     # Просто возвращаемся в главное меню
     try:
         await callback.message.edit_media(
-            media=types.InputMediaPhoto(
-                media=types.FSInputFile("bear.png")
+            media=types.InputMediaVideo(
+                media=types.FSInputFile("beer.mp4")
             ),
             reply_markup=main_menu
         )
@@ -1890,8 +1890,8 @@ async def ask_track_name(callback: types.CallbackQuery, state: FSMContext):
         # Восстанавливаем состояние из кеша
         await state.set_state(SearchStates.waiting_for_search)
         # Отправляем кешированное сообщение
-        await callback.message.answer_photo(
-            photo=types.FSInputFile("bear.png"),
+        await callback.message.answer_video(
+            video=types.FSInputFile("beer.mp4"),
             caption=cached_search.get('caption', "🎵Введите название"),
             reply_markup=back_button
         )
@@ -1905,8 +1905,8 @@ async def ask_track_name(callback: types.CallbackQuery, state: FSMContext):
         # Отправляем изображение мишки с запросом названия трека
         try:
             caption_text = "🎵Введите название"
-            await callback.message.answer_photo(
-                photo=types.FSInputFile("bear.png"),
+            await callback.message.answer_video(
+                video=types.FSInputFile("beer.mp4"),
                 caption=caption_text,
                 reply_markup=back_button
             )
@@ -1941,8 +1941,8 @@ async def back_from_track_search_handler(callback: types.CallbackQuery, state: F
         logging.info(f"🎯 Используем кешированное возвращение в главное меню для пользователя {user_id}")
         # Восстанавливаем главное меню из кеша
         await callback.message.edit_media(
-            media=types.InputMediaPhoto(
-                media=types.FSInputFile("bear.png")
+            media=types.InputMediaVideo(
+                media=types.FSInputFile("beer.mp4")
             ),
             reply_markup=main_menu
         )
@@ -1953,10 +1953,10 @@ async def back_from_track_search_handler(callback: types.CallbackQuery, state: F
         except:
             pass  # Игнорируем ошибки удаления
         
-        # Отправляем изображение мишки без текста, только с меню
+        # Отправляем видео без текста, только с меню
         try:
-            await callback.message.answer_photo(
-                photo=types.FSInputFile("bear.png"),
+            await callback.message.answer_video(
+                video=types.FSInputFile("beer.mp4"),
                 reply_markup=main_menu
             )
             
@@ -2248,10 +2248,10 @@ async def search_by_artist_input(message: types.Message, state: FSMContext):
 
     logging.info(f"👤 Поиск по исполнителю для пользователя {user_id}: '{artist_name}'")
 
-    # Отправляем изображение мишки с сообщением о начале поиска
+    # Отправляем видео с сообщением о начале поиска
     try:
-        search_msg = await message.answer_photo(
-            photo=types.FSInputFile("bear.png"),
+        search_msg = await message.answer_video(
+            video=types.FSInputFile("beer.mp4"),
             caption=f"🔍 **Поиск треков исполнителя {artist_name}...**\n\n"
                     "🎵 Ищу лучшие треки на YouTube и SoundCloud...\n"
                     "⏳ Это может занять несколько минут.",
@@ -2284,8 +2284,8 @@ async def search_by_artist_input(message: types.Message, state: FSMContext):
         if not results:
             try:
                 await search_msg.edit_media(
-                    media=types.InputMediaPhoto(
-                        media=types.FSInputFile("bear.png"),
+                    media=types.InputMediaVideo(
+                        media=types.FSInputFile("beer.mp4"),
                         caption=f"❌ **Ничего не найдено**\n\n"
                                 f"🚫 По исполнителю '{artist_name}' ничего не найдено.\n"
                                 "💡 Возможные причины:\n"
@@ -2326,8 +2326,8 @@ async def search_by_artist_input(message: types.Message, state: FSMContext):
         # Обновляем сообщение о начале загрузки
         try:
             await search_msg.edit_media(
-                media=types.InputMediaPhoto(
-                    media=types.FSInputFile("bear.png"),
+                media=types.InputMediaVideo(
+                    media=types.FSInputFile("beer.mp4"),
                     caption=f"⏳ **Загружаю {len(results)} треков исполнителя {artist_name}...**\n\n"
                             "🎵 Скачиваю аудиофайлы для прослушивания...\n"
                             "💡 Это может занять несколько минут."
@@ -2352,8 +2352,8 @@ async def search_by_artist_input(message: types.Message, state: FSMContext):
                 # Обновляем прогресс
                 try:
                     await search_msg.edit_media(
-                        media=types.InputMediaPhoto(
-                            media=types.FSInputFile("bear.png"),
+                        media=types.InputMediaVideo(
+                            media=types.FSInputFile("beer.mp4"),
                             caption=f"⏳ **Загружаю трек {i}/{len(results)} исполнителя {artist_name}...**\n\n"
                                     f"🎵 **{track.get('title', 'Без названия')}**\n"
                                     "💾 Скачиваю аудиофайл..."
@@ -2484,10 +2484,10 @@ async def search_by_artist_input(message: types.Message, state: FSMContext):
         keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
 
         try:
-            # Обновляем изображение мишки с итоговым сообщением
+            # Обновляем видео с итоговым сообщением
             await search_msg.edit_media(
-                media=types.InputMediaPhoto(
-                    media=types.FSInputFile("bear.png"),
+                media=types.InputMediaVideo(
+                    media=types.FSInputFile("beer.mp4"),
                     caption=message_text
                 ),
                 reply_markup=keyboard
@@ -2496,8 +2496,8 @@ async def search_by_artist_input(message: types.Message, state: FSMContext):
             logging.error(f"❌ Ошибка редактирования итогового сообщения: {edit_error}")
             # Пытаемся отправить новое сообщение
             try:
-                await message.answer_photo(
-                    photo=types.FSInputFile("bear.png"),
+                await message.answer_video(
+                    video=types.FSInputFile("beer.mp4"),
                     caption=message_text,
                     parse_mode="Markdown",
                     reply_markup=keyboard
@@ -3887,10 +3887,10 @@ async def back_to_main_menu(callback: types.CallbackQuery):
     user_id = str(callback.from_user.id)
     
     try:
-        # Отправляем изображение мишки без текста, только с меню
+        # Отправляем видео без текста, только с меню
         await callback.message.edit_media(
-            media=types.InputMediaPhoto(
-                media=types.FSInputFile("bear.png")
+            media=types.InputMediaVideo(
+                media=types.FSInputFile("beer.mp4")
             ),
             reply_markup=main_menu
         )
@@ -3898,8 +3898,8 @@ async def back_to_main_menu(callback: types.CallbackQuery):
         # Если что-то пошло не так, просто отправляем главное меню
         try:
             await callback.message.edit_media(
-                media=types.InputMediaPhoto(
-                    media=types.FSInputFile("bear.png")
+                media=types.InputMediaVideo(
+                    media=types.FSInputFile("beer.mp4")
                 ),
                 reply_markup=main_menu
             )
@@ -3922,8 +3922,8 @@ async def search_artist_again_callback(callback: types.CallbackQuery, state: FSM
     
     try:
         await callback.message.edit_media(
-            media=types.InputMediaPhoto(
-                media=types.FSInputFile("bear.png"),
+            media=types.InputMediaVideo(
+                media=types.FSInputFile("beer.mp4"),
                 caption="👤 **Поиск по исполнителю**\n\n"
                         "🎵 Напишите название исполнителя или группы, чью музыку хотите найти.\n\n"
                         "💡 Примеры:\n"
@@ -3975,8 +3975,8 @@ async def search_artist_retry_callback(callback: types.CallbackQuery, state: FSM
     # Отправляем сообщение о начале повторного поиска
     try:
         search_msg = await callback.message.edit_media(
-            media=types.InputMediaPhoto(
-                media=types.FSInputFile("bear.png"),
+            media=types.InputMediaVideo(
+                media=types.FSInputFile("beer.mp4"),
                 caption=f"🔄 **Повторный поиск треков исполнителя {artist_name}...**\n\n"
                         "🎵 Ищу лучшие треки на YouTube...\n"
                         "⏳ Это может занять несколько минут."
@@ -4375,8 +4375,8 @@ async def check_yoomoney_payment_callback(callback: types.CallbackQuery):
                 )
                 
                 await callback.message.edit_media(
-                    media=types.InputMediaPhoto(
-                        media=types.FSInputFile("bear.png"),
+                    media=types.InputMediaVideo(
+                        media=types.FSInputFile("beer.mp4"),
                         caption=success_message
                     ),
                     reply_markup=main_menu
