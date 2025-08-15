@@ -4038,12 +4038,6 @@ async def my_music(callback: types.CallbackQuery):
     if not tracks:
         # При пустом плейлисте отправляем новое сообщение без кнопок
         
-        # Удаляем предыдущее сообщение для чистоты чата
-        try:
-            await callback.message.delete()
-        except:
-            pass  # Игнорируем ошибки удаления
-        
         try:
             await callback.message.answer("📂 У вас нет треков.")
         except Exception as answer_error:
