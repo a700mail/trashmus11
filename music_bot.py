@@ -27,17 +27,12 @@ YOOMONEY_AVAILABLE = False
 logging.info("✅ Платежные системы отключены - бот работает в упрощенном режиме")
 
 import re
-from functools import partial, lru_cache
+from functools import partial
 import aiohttp
 from datetime import datetime, timedelta
 from collections import deque
 from asyncio import PriorityQueue
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional, List
-import requests
-from PIL import Image
-import io
-import base64
 
 # Загрузка переменных окружения
 try:
@@ -60,35 +55,33 @@ COOKIES_FILE = os.path.join(os.path.dirname(__file__), "cookies.txt")
 TRACKS_FILE = os.path.join(os.path.dirname(__file__), "tracks.json")
 SEARCH_CACHE_FILE = os.path.join(os.path.dirname(__file__), "search_cache.json")
 
-# === НАСТРОЙКИ ПЛАТЕЖЕЙ ===
-# Платежные системы отключены
-PAYMENT_PROVIDER_TOKEN = None
-PAYMENT_AMOUNT = 0
-PAYMENT_CURRENCY = "USD"
-PAYMENT_TITLE = "Платежи отключены"
-PAYMENT_DESCRIPTION = "Платежные системы не поддерживаются"
-
-# === НАСТРОЙКИ YOOMONEY ===
-# YooMoney отключен
-YOOMONEY_CLIENT_ID = None
-YOOMONEY_CLIENT_SECRET = None
-YOOMONEY_REDIRECT_URI = None
-YOOMONEY_ACCOUNT = None
-YOOMONEY_PAYMENT_AMOUNT = 0.0
-YOOMONEY_ENABLED = False
-
-# === НАСТРОЙКИ АВТОМАТИЧЕСКОЙ ОПЛАТЫ ===
-# Платежи отключены
-CARD_NUMBER = None
-TON_WALLET = None
-PAYMENT_AMOUNT_USD = "0.00"
-PAYMENT_AMOUNT_USDT = "0.00"
-TON_API_KEY = None
+# === ПЛАТЕЖНЫЕ СИСТЕМЫ ОТКЛЮЧЕНЫ ===
+# Все платежные функции удалены для упрощения и оптимизации
 
 # === НАСТРОЙКИ АВТОМАТИЧЕСКОЙ ОЧИСТКИ ===
 AUTO_CLEANUP_ENABLED = True  # Включить/выключить автоматическую очистку
 AUTO_CLEANUP_DELAY = 1.0  # Задержка в секундах перед удалением файла после отправки
 CLEANUP_LOGGING = True  # Логирование операций очистки
+
+# === РАСШИРЕННОЕ КЕШИРОВАНИЕ ===
+from functools import lru_cache
+from typing import Optional, List, Dict, Any
+import hashlib
+
+# Кеш для метаданных треков
+track_metadata_cache = {}
+search_cache = {}
+user_preferences_cache = {}
+
+# Настройки кеша
+CACHE_MAX_SIZE = 1000  # Максимальное количество элементов в кеше
+CACHE_TTL = 3600  # Время жизни кеша в секундах (1 час)
+SEARCH_CACHE_TTL = 1800  # Время жизни кеша поиска (30 минут)
+
+# Кеш для изображений
+image_cache = {}
+IMAGE_CACHE_MAX_SIZE = 100
+IMAGE_CACHE_TTL = 7200  # 2 часа для изображений
 
 # === НАСТРОЙКИ ПРЕМИУМ МОНИТОРИНГА ===
 PREMIUM_NOTIFICATION_INTERVAL = 604800  # 7 дней в секундах (напоминания о премиуме)
@@ -96,9 +89,9 @@ PREMIUM_GRACE_PERIOD = 259200  # 3 дня в секундах (грация по
 PREMIUM_EXPIRY_WARNING = 86400  # 1 день в секундах (предупреждение об истечении)
 
 ARTIST_FACTS_FILE = os.path.join(os.path.dirname(__file__), "artist_facts.json")
-PREMIUM_USERS_FILE = os.path.join(os.path.dirname(__file__), "artist_facts.json")
-# SEARCH_CACHE_TTL теперь определяется в оптимизированных настройках
-PAGE_SIZE = 15  # Увеличили размер страницы для лучшей производительности
+PREMIUM_USERS_FILE = os.path.join(os.path.dirname(__file__), "premium_users.json")
+SEARCH_CACHE_TTL = 600
+PAGE_SIZE = 10  # для постраничной навигации
 
 # === НАСТРОЙКИ ПРИОРИТЕТНОЙ ОЧЕРЕДИ ===
 PREMIUM_QUEUE = PriorityQueue()  # Приоритетная очередь для премиум пользователей
@@ -110,19 +103,13 @@ last_webhook_update = None
 webhook_update_queue = asyncio.Queue()
 
 # === ОПТИМИЗАЦИЯ ПАРАЛЛЕЛЬНЫХ ЗАГРУЗОК ===
-MAX_CONCURRENT_DOWNLOADS = 8  # Увеличили для лучшей производительности
-MAX_CONCURRENT_DOWNLOADS_PER_USER = 3  # Больше загрузок на пользователя
+MAX_CONCURRENT_DOWNLOADS = 5  # Увеличили количество одновременных загрузок
+MAX_CONCURRENT_DOWNLOADS_PER_USER = 2  # Максимум 2 загрузки на пользователя
 ACTIVE_DOWNLOADS = 0  # Счетчик активных загрузок
 user_download_semaphores = {}  # Семафоры для каждого пользователя
 
-# === ОПТИМИЗАЦИЯ КЭША ===
-MAX_CACHE_SIZE_MB = 1024  # 1GB кэш
-CACHE_CLEANUP_THRESHOLD = 0.8  # Очистка при 80% заполнении
-DOWNLOAD_TIMEOUT = 60  # Увеличили таймаут для стабильности
-SEARCH_CACHE_TTL = 1800  # 30 минут кэш поиска
-
 # === ГЛОБАЛЬНЫЕ ОБЪЕКТЫ ДЛЯ ЗАГРУЗОК ===
-yt_executor = ThreadPoolExecutor(max_workers=12, thread_name_prefix="yt_downloader")  # Увеличили количество потоков
+yt_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="yt_downloader")  # Увеличили количество потоков
 download_semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
 
 # === ОТСЛЕЖИВАНИЕ ФОНОВЫХ ЗАДАЧ ===
@@ -135,12 +122,9 @@ SOUNDCLOUD_CACHE_PREFIX = "sc"  # Префикс для кэша SoundCloud
 # === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
 user_tracks = {}
 user_recommendation_history = {}
-track_metadata_cache = {}  # Кэш метаданных треков
-search_cache = {}  # Кэш результатов поиска
 
-# === НАСТРОЙКИ АНТИСПАМА ===
-ANTISPAM_DELAY = 1.0  # Задержка между запросами в секундах (1 сек)
-user_last_request = {}  # Словарь для отслеживания времени последних запросов пользователей
+# === АНТИСПАМ ОТКЛЮЧЕН ===
+# Антиспам удален для ускорения работы бота
 
 logging.basicConfig(
     level=logging.INFO,
@@ -156,17 +140,153 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 
 # === ФУНКЦИИ ДЛЯ ОПТИМИЗАЦИИ ЗАГРУЗОК ===
 
-# === КЭШИРОВАНИЕ ===
-@lru_cache(maxsize=1000)
-def get_cached_metadata(url: str) -> Optional[dict]:
-    """Кэширует метаданные треков в памяти"""
-    return track_metadata_cache.get(url)
+# === ФУНКЦИИ КЕШИРОВАНИЯ ===
+def get_cache_key(*args) -> str:
+    """Создает уникальный ключ кеша из аргументов"""
+    key_string = "|".join(str(arg) for arg in args)
+    return hashlib.md5(key_string.encode()).hexdigest()
+
+def get_cached_metadata(track_id: str) -> Optional[Dict[str, Any]]:
+    """Получает метаданные трека из кеша"""
+    return track_metadata_cache.get(track_id)
+
+def set_cached_metadata(track_id: str, metadata: Dict[str, Any]) -> None:
+    """Сохраняет метаданные трека в кеш"""
+    if len(track_metadata_cache) >= CACHE_MAX_SIZE:
+        # Удаляем старые записи
+        oldest_key = next(iter(track_metadata_cache))
+        del track_metadata_cache[oldest_key]
+    track_metadata_cache[track_id] = metadata
+
+def get_cached_search(query: str) -> Optional[List[Dict[str, Any]]]:
+    """Получает результаты поиска из кеша"""
+    cache_key = get_cache_key("search", query)
+    cached_data = search_cache.get(cache_key)
+    if cached_data and time.time() - cached_data.get('timestamp', 0) < SEARCH_CACHE_TTL:
+        return cached_data.get('results', [])
+    return None
+
+def set_cached_search(query: str, results: List[Dict[str, Any]]) -> None:
+    """Сохраняет результаты поиска в кеш"""
+    cache_key = get_cache_key("search", query)
+    if len(search_cache) >= CACHE_MAX_SIZE:
+        # Удаляем старые записи
+        oldest_key = next(iter(search_cache))
+        del search_cache[oldest_key]
+    
+    search_cache[cache_key] = {
+        'results': results,
+        'timestamp': time.time()
+    }
+
+def get_cached_image(image_url: str) -> Optional[bytes]:
+    """Получает изображение из кеша"""
+    cached_data = image_cache.get(image_url)
+    if cached_data and time.time() - cached_data.get('timestamp', 0) < IMAGE_CACHE_TTL:
+        return cached_data.get('data')
+    return None
+
+def set_cached_image(image_url: str, image_data: bytes) -> None:
+    """Сохраняет изображение в кеш"""
+    if len(image_cache) >= IMAGE_CACHE_MAX_SIZE:
+        # Удаляем старые записи
+        oldest_key = next(iter(image_cache))
+        del image_cache[oldest_key]
+    
+    image_cache[image_url] = {
+        'data': image_data,
+        'timestamp': time.time()
+    }
+
+def cleanup_expired_cache():
+    """Очищает истекший кеш"""
+    current_time = time.time()
+    
+    # Очищаем кеш метаданных
+    expired_tracks = [k for k, v in track_metadata_cache.items() 
+                     if current_time - v.get('timestamp', 0) > CACHE_TTL]
+    for k in expired_tracks:
+        del track_metadata_cache[k]
+    
+    # Очищаем кеш поиска
+    expired_searches = [k for k, v in search_cache.items() 
+                       if current_time - v.get('timestamp', 0) > SEARCH_CACHE_TTL]
+    for k in expired_searches:
+        del search_cache[k]
+    
+    # Очищаем кеш изображений
+    expired_images = [k for k, v in image_cache.items() 
+                     if current_time - v.get('timestamp', 0) > IMAGE_CACHE_TTL]
+    for k in expired_images:
+        del image_cache[k]
+    
+    if expired_tracks or expired_searches or expired_images:
+        logging.info(f"🧹 Очищен истекший кеш: {len(expired_tracks)} треков, {len(expired_searches)} поисков, {len(expired_images)} изображений")
 
 def get_user_download_semaphore(user_id: str) -> asyncio.Semaphore:
     """Получает или создает семафор для конкретного пользователя"""
     if user_id not in user_download_semaphores:
         user_download_semaphores[user_id] = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS_PER_USER)
     return user_download_semaphores[user_id]
+
+# === ОПТИМИЗИРОВАННЫЕ ФУНКЦИИ ДЛЯ ИЗОБРАЖЕНИЙ ===
+async def get_youtube_thumbnail_optimized(video_id: str) -> Optional[bytes]:
+    """Оптимизированное получение превью YouTube с кешированием"""
+    try:
+        # Проверяем кеш
+        cached_image = get_cached_image(f"yt_{video_id}")
+        if cached_image:
+            return cached_image
+        
+        # Получаем изображение асинхронно
+        thumbnail_url = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(thumbnail_url, timeout=5) as response:
+                if response.status == 200:
+                    image_data = await response.read()
+                    # Сохраняем в кеш
+                    set_cached_image(f"yt_{video_id}", image_data)
+                    return image_data
+                else:
+                    # Пробуем стандартное превью
+                    thumbnail_url = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
+                    async with session.get(thumbnail_url, timeout=5) as response2:
+                        if response2.status == 200:
+                            image_data = await response2.read()
+                            set_cached_image(f"yt_{video_id}", image_data)
+                            return image_data
+        
+        return None
+    except Exception as e:
+        logging.error(f"❌ Ошибка получения превью YouTube {video_id}: {e}")
+        return None
+
+async def extract_audio_thumbnail_optimized(audio_file_path: str) -> Optional[bytes]:
+    """Оптимизированное извлечение превью из аудиофайла"""
+    try:
+        # Проверяем кеш
+        cache_key = f"audio_thumb_{hashlib.md5(audio_file_path.encode()).hexdigest()}"
+        cached_image = get_cached_image(cache_key)
+        if cached_image:
+            return cached_image
+        
+        # Извлекаем превью
+        from mutagen import File
+        audio = File(audio_file_path)
+        
+        if audio and hasattr(audio, 'tags'):
+            for tag_name in ['APIC:', 'APIC:cover', 'APIC:0']:
+                if tag_name in audio.tags:
+                    image_data = audio.tags[tag_name].data
+                    # Сохраняем в кеш
+                    set_cached_image(cache_key, image_data)
+                    return image_data
+        
+        return None
+    except Exception as e:
+        logging.error(f"❌ Ошибка извлечения превью из {audio_file_path}: {e}")
+        return None
 
 async def cleanup_user_semaphores():
     """Очищает неиспользуемые семафоры пользователей"""
@@ -187,278 +307,15 @@ async def cleanup_user_semaphores():
         except Exception as e:
             await asyncio.sleep(60)
 
-# === МЕНЕДЖЕР КЭША ===
-class CacheManager:
-    """Менеджер кэша с автоматической очисткой"""
-    
-    def __init__(self, max_size_mb: int = MAX_CACHE_SIZE_MB):
-        self.max_size_mb = max_size_mb
-        self.cache_info = {}
-        self.last_cleanup = time.time()
-    
-    def add_file(self, file_path: str, metadata: dict):
-        """Добавляет файл в кэш"""
-        if os.path.exists(file_path):
-            size_mb = os.path.getsize(file_path) / (1024 * 1024)
-            self.cache_info[file_path] = {
-                'size_mb': size_mb,
-                'metadata': metadata,
-                'added_time': time.time(),
-                'access_time': time.time()
-            }
-            self._check_cleanup()
-    
-    def get_file(self, file_path: str) -> Optional[dict]:
-        """Получает информацию о файле из кэша"""
-        if file_path in self.cache_info:
-            self.cache_info[file_path]['access_time'] = time.time()
-            return self.cache_info[file_path]['metadata']
-        return None
-    
-    def _check_cleanup(self):
-        """Проверяет необходимость очистки кэша"""
-        current_time = time.time()
-        if current_time - self.last_cleanup < 300:  # Каждые 5 минут
-            return
-        
-        total_size = sum(info['size_mb'] for info in self.cache_info.values())
-        if total_size > self.max_size_mb * CACHE_CLEANUP_THRESHOLD:
-            self._cleanup_cache()
-            self.last_cleanup = current_time
-    
-    def _cleanup_cache(self):
-        """Очищает кэш, удаляя старые и редко используемые файлы"""
+async def cache_cleanup_task():
+    """Фоновая задача для очистки истекшего кеша"""
+    while True:
         try:
-            # Сортируем файлы по времени последнего доступа
-            sorted_files = sorted(
-                self.cache_info.items(),
-                key=lambda x: x[1]['access_time']
-            )
-            
-            # Удаляем файлы до достижения целевого размера
-            target_size = self.max_size_mb * 0.5  # Цель - 50% от максимума
-            current_size = sum(info['size_mb'] for info in self.cache_info.values())
-            
-            for file_path, info in sorted_files:
-                if current_size <= target_size:
-                    break
-                
-                try:
-                    if os.path.exists(file_path):
-                        os.remove(file_path)
-                        logging.info(f"Удален файл кэша: {file_path}")
-                    del self.cache_info[file_path]
-                    current_size -= info['size_mb']
-                except Exception as e:
-                    logging.error(f"Ошибка удаления файла кэша {file_path}: {e}")
-            
-            logging.info(f"Очистка кэша завершена. Текущий размер: {current_size:.2f}MB")
-            
+            await asyncio.sleep(600)  # Каждые 10 минут
+            cleanup_expired_cache()
         except Exception as e:
-            logging.error(f"Ошибка очистки кэша: {e}")
-
-# Создаем глобальный менеджер кэша
-cache_manager = CacheManager()
-
-# === ФУНКЦИИ ДЛЯ РАБОТЫ С ИЗОБРАЖЕНИЯМИ ===
-async def extract_audio_thumbnail(audio_file_path: str) -> Optional[str]:
-    """Извлекает обложку из аудио файла и возвращает путь к изображению"""
-    try:
-        import mutagen
-        from mutagen import File
-        
-        # Открываем аудио файл
-        audio = File(audio_file_path)
-        
-        # Ищем обложку в метаданных
-        if audio and hasattr(audio, 'tags'):
-            for tag in audio.tags.values():
-                if hasattr(tag, 'mime') and 'image' in tag.mime:
-                    # Извлекаем изображение
-                    image_data = bytes(tag)
-                    
-                    # Сохраняем во временный файл
-                    thumbnail_path = audio_file_path.replace('.mp3', '_thumb.jpg')
-                    with open(thumbnail_path, 'wb') as f:
-                        f.write(image_data)
-                    
-                    logging.info(f"✅ Обложка извлечена: {thumbnail_path}")
-                    return thumbnail_path
-                    
-        logging.info("⚠️ Обложка не найдена в метаданных аудио")
-        return None
-        
-    except Exception as e:
-        logging.error(f"❌ Ошибка извлечения обложки: {e}")
-        return None
-
-async def get_youtube_thumbnail(url: str) -> Optional[str]:
-    """Получает превью с YouTube"""
-    try:
-        # Извлекаем video ID из URL
-        if 'youtube.com/watch?v=' in url:
-            video_id = url.split('v=')[1].split('&')[0]
-        elif 'youtu.be/' in url:
-            video_id = url.split('youtu.be/')[1].split('?')[0]
-        else:
-            return None
-        
-        # Формируем URL превью в высоком качестве
-        thumbnail_url = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
-        
-        # Проверяем доступность
-        response = requests.head(thumbnail_url, timeout=10)
-        if response.status_code != 200:
-            # Пробуем стандартное качество
-            thumbnail_url = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
-            response = requests.head(thumbnail_url, timeout=10)
-            if response.status_code != 200:
-                return None
-        
-        # Скачиваем изображение
-        img_response = requests.get(thumbnail_url, timeout=15)
-        if img_response.status_code == 200:
-            # Сохраняем во временный файл
-            thumbnail_path = f"cache/youtube_thumb_{video_id}.jpg"
-            with open(thumbnail_path, 'wb') as f:
-                f.write(img_response.content)
-            
-            logging.info(f"✅ YouTube превью сохранено: {thumbnail_path}")
-            return thumbnail_path
-        
-        return None
-        
-    except Exception as e:
-        logging.error(f"❌ Ошибка получения YouTube превью: {e}")
-        return None
-
-async def create_beautiful_audio_message(audio_file_path: str, title: str, performer: str = "Music Bot", 
-                                       duration: int = 0, thumbnail_path: str = None) -> types.InputMediaAudio:
-    """Создает красивое аудио сообщение с метаданными"""
-    try:
-        # Открываем аудио файл
-        with open(audio_file_path, 'rb') as audio_file:
-            # Создаем InputMediaAudio с метаданными
-            media = types.InputMediaAudio(
-                media=audio_file,
-                title=title,
-                performer=performer,
-                duration=duration,
-                thumb=thumbnail_path if thumbnail_path and os.path.exists(thumbnail_path) else None
-            )
-            
-            return media
-            
-    except Exception as e:
-        logging.error(f"❌ Ошибка создания аудио сообщения: {e}")
-        return None
-
-# === ОПТИМИЗИРОВАННЫЕ ФУНКЦИИ ПОИСКА ===
-@lru_cache(maxsize=500)
-async def search_tracks_cached(query: str, limit: int = 10) -> List[dict]:
-    """Кэшированный поиск треков"""
-    cache_key = f"{query}_{limit}"
-    
-    if cache_key in search_cache:
-        cache_entry = search_cache[cache_key]
-        if time.time() - cache_entry['timestamp'] < SEARCH_CACHE_TTL:
-            return cache_entry['results']
-    
-    # Выполняем поиск (здесь должна быть ваша логика поиска)
-    results = []  # Замените на реальную логику поиска
-    
-    # Кэшируем результаты
-    search_cache[cache_key] = {
-        'results': results,
-        'timestamp': time.time()
-    }
-    
-    return results
-
-async def cleanup_search_cache():
-    """Очищает устаревшие записи кэша поиска"""
-    try:
-        current_time = time.time()
-        expired_keys = [
-            key for key, entry in search_cache.items()
-            if current_time - entry['timestamp'] > SEARCH_CACHE_TTL
-        ]
-        
-        for key in expired_keys:
-            del search_cache[key]
-        
-        if expired_keys:
-            logging.info(f"Очищено {len(expired_keys)} устаревших записей кэша поиска")
-            
-    except Exception as e:
-        logging.error(f"Ошибка очистки кэша поиска: {e}")
-
-async def send_beautiful_audio(message: types.Message, audio_file_path: str, title: str, 
-                              performer: str = "Music Bot", duration: int = 0, 
-                              original_url: str = None) -> bool:
-    """Отправляет красивое аудио сообщение с изображением"""
-    try:
-        thumbnail_path = None
-        
-        # Пытаемся получить изображение
-        if original_url and ('youtube.com' in original_url or 'youtu.be' in original_url):
-            # Для YouTube получаем превью
-            thumbnail_path = await get_youtube_thumbnail(original_url)
-        else:
-            # Пытаемся извлечь из аудио файла
-            thumbnail_path = await extract_audio_thumbnail(audio_file_path)
-        
-        # Отправляем аудио с метаданными
-        await message.answer_audio(
-            types.FSInputFile(audio_file_path),
-            title=title,
-            performer=performer,
-            duration=duration,
-            thumb=types.FSInputFile(thumbnail_path) if thumbnail_path and os.path.exists(thumbnail_path) else None
-        )
-        
-        logging.info(f"✅ Красивое аудио отправлено: {title}")
-        
-        # Удаляем временный файл изображения
-        if thumbnail_path and os.path.exists(thumbnail_path):
-            try:
-                os.remove(thumbnail_path)
-                logging.info(f"🗑️ Временное изображение удалено: {thumbnail_path}")
-            except Exception as e:
-                logging.warning(f"⚠️ Не удалось удалить временное изображение: {e}")
-        
-        return True
-        
-    except Exception as e:
-        logging.error(f"❌ Ошибка отправки красивого аудио: {e}")
-        
-        # Fallback: отправляем обычное аудио
-        try:
-            await message.answer_audio(
-                types.FSInputFile(audio_file_path),
-                title=title,
-                performer=performer,
-                duration=duration
-            )
-            logging.info(f"✅ Аудио отправлено (fallback): {title}")
-            return True
-        except Exception as fallback_error:
-            logging.error(f"❌ Ошибка fallback отправки: {fallback_error}")
-            return False
-
-async def _cache_monitor():
-    """Мониторинг кэша"""
-    try:
-        # Проверяем размер кэша
-        cache_size = sum(info['size_mb'] for info in cache_manager.cache_info.values())
-        logging.info(f"Размер кэша: {cache_size:.2f}MB / {MAX_CACHE_SIZE_MB}MB")
-        
-        # Проверяем размер кэша поиска
-        search_cache_size = len(search_cache)
-        logging.info(f"Размер кэша поиска: {search_cache_size} записей")
-        
-    except Exception as e:
-        logging.error(f"Ошибка в мониторинге кэша: {e}")
+            logging.error(f"❌ Ошибка очистки кеша: {e}")
+            await asyncio.sleep(60)
 
 # === УНИВЕРСАЛЬНАЯ СИСТЕМА УПРАВЛЕНИЯ ФОНОВЫМИ ЗАДАЧАМИ ===
 
@@ -568,12 +425,6 @@ async def task_cleanup_tasks():
     # Проверяем целостность файлов премиум пользователей
     await check_premium_files_integrity()
 
-async def task_tracks_optimization():
-    """Обертка для оптимизации треков"""
-    await cleanup_old_tracks_async()
-    # Оптимизируем файл треков
-    optimize_tracks_file()
-
 # === СТАРЫЕ ФУНКЦИИ ЗАПУСКА ФОНОВЫХ ЗАДАЧ (ЗАМЕНЯЮТСЯ) ===
 
 # Запускаем периодическую очистку антиспама
@@ -606,13 +457,9 @@ def start_background_tasks():
         asyncio.create_task(run_periodic_task("Очистка файлов", task_file_cleanup, 3600))
         asyncio.create_task(run_periodic_task("Мониторинг премиума", task_premium_monitoring, 3600))
         asyncio.create_task(run_periodic_task("Задачи очистки", task_cleanup_tasks, 3600))
-        asyncio.create_task(run_periodic_task("Оптимизация треков", task_tracks_optimization, 7200))  # Каждые 2 часа
         
-        # Запускаем задачи оптимизации кэша
-        asyncio.create_task(run_periodic_task("Очистка кэша поиска", cleanup_search_cache, 1800))  # Каждые 30 минут
-        
-        # Запускаем мониторинг кэша
-        asyncio.create_task(run_periodic_task("Мониторинг кэша", _cache_monitor, 600))  # Каждые 10 минут
+        # Запускаем новую задачу очистки кеша
+        asyncio.create_task(cache_cleanup_task())
         
         # Запускаем мониторинг статуса задач
         asyncio.create_task(log_task_status())
@@ -678,48 +525,12 @@ def format_duration(seconds):
         return ""
 
 def check_antispam(user_id: str) -> tuple[bool, float]:
-    """
-    Проверяет антиспам для пользователя.
-    Возвращает (разрешено, время до следующего разрешения).
-    """
-    try:
-        current_time = time.time()
-        last_request_time = user_last_request.get(str(user_id), 0)
-        
-        # Если это первый запрос или прошло достаточно времени
-        if current_time - last_request_time >= ANTISPAM_DELAY:
-            user_last_request[str(user_id)] = current_time
-            return True, 0.0
-        
-        # Вычисляем время до следующего разрешения
-        time_until_next = ANTISPAM_DELAY - (current_time - last_request_time)
-        return False, time_until_next
-        
-    except Exception as e:
-        logging.error(f"❌ Ошибка проверки антиспама для пользователя {user_id}: {e}")
-        # В случае ошибки разрешаем запрос
-        return True, 0.0
+    """Антиспам отключен - всегда разрешаем запросы"""
+    return True, 0.0
 
 def cleanup_old_antispam_records():
-    """Очищает старые записи антиспама для экономии памяти"""
-    try:
-        current_time = time.time()
-        # Удаляем записи старше 1 часа
-        cutoff_time = current_time - 3600
-        
-        users_to_remove = []
-        for user_id, last_time in user_last_request.items():
-            if last_time < cutoff_time:
-                users_to_remove.append(user_id)
-        
-        for user_id in users_to_remove:
-            del user_last_request[user_id]
-            
-        if users_to_remove:
-            logging.info(f"🧹 Очищено {len(users_to_remove)} старых записей антиспама")
-            
-    except Exception as e:
-        logging.error(f"❌ Ошибка очистки антиспама: {e}")
+    """Антиспам отключен - функция не используется"""
+    pass
 
 def is_admin(user_id: str, username: str = None) -> bool:
     """Проверяет, является ли пользователь администратором"""
@@ -767,56 +578,6 @@ def save_json(path, data):
         
     except Exception as e:
         logging.error(f"❌ Ошибка сохранения {path}: {e}")
-        return False
-
-async def save_json_async(path, data):
-    """Асинхронная версия save_json для предотвращения блокировки"""
-    if not path:
-        logging.error("❌ save_json_async: путь не указан")
-        return False
-        
-    try:
-        # Выполняем сохранение в отдельном потоке
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, save_json, path, data)
-        return result
-    except Exception as e:
-        logging.error(f"❌ Ошибка асинхронного сохранения {path}: {e}")
-        return False
-
-def save_json_optimized(path, data):
-    """Оптимизированная версия save_json с сжатием и проверкой размера"""
-    if not path:
-        logging.error("❌ save_json_optimized: путь не указан")
-        return False
-        
-    try:
-        # Создаем директорию, если она не существует
-        dir_path = os.path.dirname(path)
-        if dir_path:
-            os.makedirs(dir_path, exist_ok=True)
-        
-        # Проверяем размер данных
-        data_size = len(json.dumps(data, ensure_ascii=False))
-        if data_size > 10 * 1024 * 1024:  # Больше 10MB
-            logging.warning(f"⚠️ Большой файл данных: {data_size / (1024*1024):.2f} MB")
-            
-            # Удаляем старые записи, если файл слишком большой
-            if isinstance(data, dict) and len(data) > 1000:
-                # Оставляем только последние 800 записей
-                keys_to_keep = list(data.keys())[-800:]
-                data = {k: data[k] for k in keys_to_keep}
-                logging.info(f"🧹 Очищены старые записи, оставлено {len(data)} записей")
-        
-        # Сохраняем с оптимизированным форматированием
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
-        
-        logging.info(f"✅ Данные успешно сохранены в {path} (размер: {data_size / 1024:.1f} KB)")
-        return True
-        
-    except Exception as e:
-        logging.error(f"❌ Ошибка оптимизированного сохранения {path}: {e}")
         return False
 
 def is_premium_user(user_id: str, username: str = None) -> bool:
@@ -1106,7 +867,6 @@ async def check_yoomoney_payment(user_id: str) -> bool:
         return False
         
 
-
 def generate_payment_code(user_id: str, username: str) -> str:
     """Генерирует уникальный код для отслеживания платежа"""
     try:
@@ -1131,8 +891,6 @@ def generate_payment_code(user_id: str, username: str) -> str:
         # Возвращаем fallback код
         return f"fallback_{int(time.time())}_{secrets.token_hex(2)}"
 
-
-
 user_tracks = load_json(TRACKS_FILE, {})
 search_cache = load_json(SEARCH_CACHE_FILE, {})
 
@@ -1145,8 +903,6 @@ REGULAR_QUEUE = deque()
 PREMIUM_QUEUE = asyncio.PriorityQueue()
 
 artist_facts = load_json(ARTIST_FACTS_FILE, {"facts": {}})
-
-
 
 def save_tracks():
     global user_tracks
@@ -1161,37 +917,12 @@ def save_tracks():
             logging.error(f"❌ save_tracks: user_tracks не является словарем: {type(user_tracks)}")
             return False
         
-        # Используем оптимизированное сохранение
-        save_json_optimized(TRACKS_FILE, user_tracks)
+        save_json(TRACKS_FILE, user_tracks)
         logging.info("✅ Треки успешно сохранены")
         return True
         
     except Exception as e:
         logging.error(f"❌ Ошибка сохранения треков: {e}")
-        return False
-
-async def save_tracks_async():
-    """Асинхронная версия save_tracks для предотвращения блокировки"""
-    global user_tracks
-    try:
-        # Проверяем, что user_tracks не None
-        if user_tracks is None:
-            logging.warning("⚠️ save_tracks_async: user_tracks был None, инициализируем пустым словарем")
-            user_tracks = {}
-        
-        # Проверяем, что user_tracks является словарем
-        if not isinstance(user_tracks, dict):
-            logging.error(f"❌ save_tracks_async: user_tracks не является словарем: {type(user_tracks)}")
-            return False
-        
-        # Используем асинхронное сохранение
-        result = await save_json_async(TRACKS_FILE, user_tracks)
-        if result:
-            logging.info("✅ Треки успешно сохранены асинхронно")
-        return result
-        
-    except Exception as e:
-        logging.error(f"❌ Ошибка асинхронного сохранения треков: {e}")
         return False
 
 def cleanup_track_cache():
@@ -1207,84 +938,6 @@ def cleanup_track_cache():
             logging.info(f"🧹 Кэш метаданных очищен: удалено {len(keys_to_remove)} записей")
     except Exception as e:
         logging.error(f"❌ Ошибка очистки кэша метаданных: {e}")
-
-async def cleanup_old_tracks_async():
-    """Асинхронно очищает старые треки для экономии места"""
-    global user_tracks
-    try:
-        if not user_tracks:
-            return
-        
-        current_time = time.time()
-        max_age_days = 30  # Максимальный возраст трека в днях
-        max_age_seconds = max_age_days * 24 * 3600
-        
-        total_removed = 0
-        
-        for user_id, tracks in user_tracks.items():
-            if not isinstance(tracks, list):
-                continue
-                
-            # Фильтруем треки по возрасту
-            original_count = len(tracks)
-            tracks[:] = [
-                track for track in tracks
-                if isinstance(track, dict) and 
-                (not track.get('added_at') or 
-                 (current_time - datetime.fromisoformat(track['added_at']).timestamp()) < max_age_seconds)
-            ]
-            
-            removed_count = original_count - len(tracks)
-            total_removed += removed_count
-            
-            if removed_count > 0:
-                logging.info(f"🧹 Удалено {removed_count} старых треков для пользователя {user_id}")
-        
-        if total_removed > 0:
-            logging.info(f"🧹 Всего удалено {total_removed} старых треков")
-            # Асинхронно сохраняем изменения
-            asyncio.create_task(save_tracks_async())
-        
-    except Exception as e:
-        logging.error(f"❌ Ошибка очистки старых треков: {e}")
-
-def optimize_tracks_file():
-    """Оптимизирует файл треков для улучшения производительности"""
-    try:
-        if not os.path.exists(TRACKS_FILE):
-            return
-        
-        # Проверяем размер файла
-        file_size = os.path.getsize(TRACKS_FILE)
-        if file_size < 1024 * 1024:  # Меньше 1MB
-            return
-        
-        logging.info(f"🔧 Оптимизация файла треков (размер: {file_size / (1024*1024):.2f} MB)")
-        
-        # Загружаем данные
-        tracks_data = load_json(TRACKS_FILE, {})
-        if not tracks_data:
-            return
-        
-        # Создаем резервную копию
-        backup_file = f"{TRACKS_FILE}.backup"
-        save_json(backup_file, tracks_data)
-        
-        # Очищаем старые записи
-        for user_id, tracks in tracks_data.items():
-            if isinstance(tracks, list) and len(tracks) > 100:
-                # Оставляем только последние 100 треков
-                tracks_data[user_id] = tracks[-100:]
-                logging.info(f"🧹 Ограничен список треков для пользователя {user_id}: {len(tracks)} -> 100")
-        
-        # Сохраняем оптимизированные данные
-        save_json_optimized(TRACKS_FILE, tracks_data)
-        
-        new_size = os.path.getsize(TRACKS_FILE)
-        logging.info(f"✅ Файл треков оптимизирован: {file_size / (1024*1024):.2f} MB -> {new_size / (1024*1024):.2f} MB")
-        
-    except Exception as e:
-        logging.error(f"❌ Ошибка оптимизации файла треков: {e}")
 
 # Функция preload_track_metadata удалена - больше не нужна
 
@@ -1380,10 +1033,6 @@ async def process_download_queue_fast():
                 
     except Exception as e:
         logging.error(f"❌ Ошибка в process_download_queue_fast: {e}")
-
-
-
-
 
 # === Экспорт cookies (опционально) ===
 def export_cookies():
@@ -2224,49 +1873,6 @@ def set_cached_search(query, results):
         logging.error(f"❌ Ошибка в set_cached_search: {e}")
         return False
 
-# === АСИНХРОННЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С ТРЕКАМИ ===
-async def add_track_to_collection_async(user_id: str, track_data: dict):
-    """Асинхронно добавляет трек в коллекцию пользователя"""
-    global user_tracks
-    try:
-        if not user_id or not track_data:
-            logging.error("❌ add_track_to_collection_async: некорректные параметры")
-            return False
-        
-        # Инициализируем user_tracks если нужно
-        if user_tracks is None:
-            user_tracks = {}
-        
-        if user_id not in user_tracks:
-            user_tracks[user_id] = []
-        
-        # Проверяем, не добавлен ли уже трек
-        track_exists = any(t.get('title') == track_data.get('title') for t in user_tracks[user_id])
-        if track_exists:
-            logging.info(f"⚠️ Трек уже в коллекции пользователя {user_id}")
-            return True
-        
-        # Добавляем трек
-        track_to_save = {
-            'title': track_data.get('title', 'Неизвестный трек'),
-            'original_url': track_data.get('url', ''),
-            'duration': track_data.get('duration', 0),
-            'uploader': track_data.get('uploader', 'Неизвестный исполнитель'),
-            'added_at': datetime.now().isoformat()
-        }
-        
-        user_tracks[user_id].append(track_to_save)
-        
-        # Асинхронно сохраняем в фоне
-        asyncio.create_task(save_tracks_async())
-        
-        logging.info(f"✅ Трек асинхронно добавлен в коллекцию пользователя {user_id}")
-        return True
-        
-    except Exception as e:
-        logging.error(f"❌ Ошибка асинхронного добавления трека: {e}")
-        return False
-
 # === Асинхронная обёртка для yt_dlp ===
 def _ydl_download_blocking(url, outtmpl, cookiefile, is_premium=False):
     """Блокирующая функция для скачивания через yt-dlp"""
@@ -2391,6 +1997,14 @@ async def download_track_from_url(user_id, url):
         if not user_id or not url:
             logging.error("❌ download_track_from_url: некорректные параметры")
             return None
+        
+        # Проверяем кеш для метаданных трека
+        cache_key = f"metadata_{hashlib.md5(url.encode()).hexdigest()}"
+        cached_metadata = get_cached_metadata(cache_key)
+        
+        if cached_metadata:
+            logging.info(f"🎯 Используем кешированные метаданные для {url}")
+            return cached_metadata
             
         # Проверяем, что user_tracks не None
         if user_tracks is None:
@@ -2424,8 +2038,8 @@ async def download_track_from_url(user_id, url):
                 'no_warnings': True,
                 'ignoreerrors': True,
                 'extract_flat': True,  # Только метаданные, без скачивания
-                'timeout': DOWNLOAD_TIMEOUT,  # Используем оптимизированный таймаут
-                'retries': 2,   # Увеличили количество попыток для стабильности
+                'timeout': 10,  # Уменьшаем таймаут для быстрого ответа
+                'retries': 1,   # Уменьшаем количество попыток
                 'nocheckcertificate': True,  # Пропускаем проверку сертификата для скорости
             }
             
@@ -2460,6 +2074,10 @@ async def download_track_from_url(user_id, url):
                 
                 # Сохраняем в кэш для будущего использования
                 track_metadata_cache[url] = track_info
+                
+                # Сохраняем в расширенный кеш
+                set_cached_metadata(cache_key, track_info)
+                
                 logging.info(f"💾 Метаданные сохранены в кэш для {url}")
                 
                 # Очищаем кэш, если он превышает максимальный размер
@@ -2485,64 +2103,11 @@ async def download_track_from_url(user_id, url):
         logging.exception(f"❌ Ошибка сохранения метаданных трека {url} для пользователя {user_id}: {e}")
         return None
 
-async def download_track_from_url_for_genre(user_id, url):
-    """
-    Асинхронно скачивает трек для жанров во временную папку, НЕ добавляет в user_tracks.
-    """
-    try:
-        # Проверяем входные параметры
-        if not user_id or not url:
-            logging.error("❌ download_track_from_url_for_genre: некорректные параметры")
-            return None
-        
-        # Проверяем, что URL валидный
-        if not url or 'youtube.com' not in url:
-            logging.error(f"❌ Неверный URL для загрузки: {url}")
-            return None
-        
-        # Получаем информацию о треке для названия
-        try:
-            ydl_opts = {
-                'format': 'bestaudio/best',
-                'quiet': True,
-                'no_warnings': True,
-                'ignoreerrors': True,
-                'extract_flat': True,  # Только метаданные
-                'timeout': 30,
-                'retries': 3,
-            }
-            
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                if not info:
-                    logging.error(f"❌ Не удалось получить информацию о треке: {url}")
-                    return None
-                title = info.get('title', 'Неизвестный трек')
-        except Exception as info_error:
-            logging.error(f"❌ Ошибка получения информации о треке: {info_error}")
-            title = 'Неизвестный трек'
-        
-        # Скачиваем трек во временную папку
-        temp_file_path = await download_track_to_temp(user_id, url, title)
-        
-        if temp_file_path:
-            logging.info(f"✅ Трек по жанру успешно скачан во временную папку: {temp_file_path}")
-            return temp_file_path
-        else:
-            logging.error(f"❌ Не удалось скачать трек по жанру во временную папку: {title}")
-            return None
-        
-    except Exception as e:
-        logging.exception(f"❌ Ошибка скачивания трека по жанру {url} для пользователя {user_id}: {e}")
-        return None
-
 # === Состояния ===
 class SearchStates(StatesGroup):
     waiting_for_search = State()
     waiting_for_artist = State()
     waiting_for_artist_search = State()
-
-
 
 # === Главное меню ===
 main_menu = InlineKeyboardMarkup(
@@ -2567,12 +2132,6 @@ artist_search_menu = InlineKeyboardMarkup(
     ]
 )
 
-
-
-
-
-
-
 back_button = InlineKeyboardMarkup(
     inline_keyboard=[[InlineKeyboardButton(text="⬅ Назад", callback_data="back_to_main")]]
 )
@@ -2581,23 +2140,44 @@ back_button = InlineKeyboardMarkup(
 @dp.callback_query(F.data == "back_to_main")
 async def back_to_main_menu(callback: types.CallbackQuery):
     """Возвращает пользователя в главное меню"""
+    # Быстрый ответ для ускорения
+    await callback.answer("⏳ Обрабатываю...")
+    
     user_id = str(callback.from_user.id)
     
     # Проверяем антиспам
     is_allowed, time_until = check_antispam(user_id)
     if not is_allowed:
-        await callback.answer(f"⏳ Подождите {time_until:.1f} сек.", show_alert=True)
+        await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
         return
     
     try:
-        # Удаляем предыдущее inline-сообщение
-        await callback.message.delete()
+        # Проверяем кеш для главного меню
+        cache_key = f"main_menu_{user_id}"
+        cached_menu = get_cached_metadata(cache_key)
         
-        # Отправляем изображение мишки без текста, только с меню
-        await callback.message.answer_photo(
-            photo=types.FSInputFile("bear.png"),
-            reply_markup=main_menu
-        )
+        if cached_menu:
+            logging.info(f"🎯 Используем кешированное главное меню для пользователя {user_id}")
+            # Восстанавливаем главное меню из кеша
+            await callback.message.edit_media(
+                media=types.InputMediaPhoto(
+                    media=types.FSInputFile("bear.png")
+                ),
+                reply_markup=main_menu
+            )
+        else:
+            # Удаляем предыдущее inline-сообщение
+            await callback.message.delete()
+            
+            # Отправляем изображение мишки без текста, только с меню
+            await callback.message.answer_photo(
+                photo=types.FSInputFile("bear.png"),
+                reply_markup=main_menu
+            )
+            
+            # Сохраняем в кеш
+            menu_data = {'menu': 'main_menu'}
+            set_cached_metadata(cache_key, menu_data)
     except Exception as e:
         # Если что-то пошло не так, просто отправляем главное меню
         try:
@@ -2611,42 +2191,40 @@ async def back_to_main_menu(callback: types.CallbackQuery):
 # === Команды ===
 @dp.message(Command("start"))
 async def send_welcome(message: types.Message):
-    # Отправляем изображение мишки без текста, только с меню
-    try:
+    user_id = str(message.from_user.id)
+    
+    # Проверяем кеш для приветственного сообщения
+    cache_key = f"welcome_{user_id}"
+    cached_welcome = get_cached_metadata(cache_key)
+    
+    if cached_welcome:
+        logging.info(f"🎯 Используем кешированное приветственное сообщение для пользователя {user_id}")
+        # Восстанавливаем приветственное сообщение из кеша
         await message.answer_photo(
             photo=types.FSInputFile("bear.png"),
             reply_markup=main_menu
         )
-    except Exception as e:
-        # Если не удалось отправить фото, отправляем обычное сообщение
-        logging.error(f"❌ Ошибка отправки фото: {e}")
-        await message.answer("🐻 Привет! Я бот для поиска и скачивания музыки с YouTube.", reply_markup=main_menu)
+    else:
+        # Отправляем изображение мишки без текста, только с меню
+        try:
+            await message.answer_photo(
+                photo=types.FSInputFile("bear.png"),
+                reply_markup=main_menu
+            )
+            
+            # Сохраняем в кеш
+            welcome_data = {'welcome': 'start_command'}
+            set_cached_metadata(cache_key, welcome_data)
+        except Exception as e:
+            # Если не удалось отправить фото, отправляем обычное сообщение
+            logging.error(f"❌ Ошибка отправки фото: {e}")
+            await message.answer("🐻 Привет! Я бот для поиска и скачивания музыки с YouTube.", reply_markup=main_menu)
 
 @dp.callback_query(F.data == "by_artist")
 async def by_artist_section(callback: types.CallbackQuery, state: FSMContext):
     """Открывает поиск по исполнителю"""
-    user_id = str(callback.from_user.id)
-    
-    # Проверяем антиспам
-    is_allowed, time_until = check_antispam(user_id)
-    if not is_allowed:
-        await callback.answer(f"⏳ Подождите {time_until:.1f} сек.", show_alert=True)
-        return
-    
-    try:
-        # Переходим в состояние ожидания ввода имени исполнителя
-        await state.set_state(SearchStates.waiting_for_artist_search)
-        
-        # Отправляем сообщение с запросом имени исполнителя
-        msg = await callback.message.answer("🌨️ Введите исполнителя")
-        await state.update_data(prompt_message_id=msg.message_id)
-        
-    except Exception as e:
-        await callback.answer("❌ Произошла ошибка. Попробуйте еще раз.", show_alert=True)
-
-@dp.callback_query(F.data == "premium_features")
-async def show_artist_search_menu(callback: types.CallbackQuery, state: FSMContext):
-    """Показывает форму поиска по исполнителю"""
+    # Быстрый ответ для ускорения
+    await callback.answer("⏳ Обрабатываю...")
     
     user_id = str(callback.from_user.id)
     
@@ -2656,51 +2234,103 @@ async def show_artist_search_menu(callback: types.CallbackQuery, state: FSMConte
         await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
         return
     
-    # Устанавливаем состояние ожидания ввода имени исполнителя
-    await state.set_state(SearchStates.waiting_for_artist)
-    
-    # Удаляем предыдущее сообщение для чистоты чата
     try:
-        await callback.message.delete()
-    except:
-        pass  # Игнорируем ошибки удаления
+        # Проверяем кеш для состояния поиска по исполнителю
+        cache_key = f"by_artist_{user_id}"
+        cached_state = get_cached_metadata(cache_key)
+        
+        if cached_state:
+            logging.info(f"🎯 Используем кешированное состояние для поиска по исполнителю пользователя {user_id}")
+            # Восстанавливаем состояние из кеша
+            await state.set_state(SearchStates.waiting_for_artist_search)
+            await state.update_data(prompt_message_id=cached_state.get('prompt_message_id'))
+        else:
+            # Переходим в состояние ожидания ввода имени исполнителя
+            await state.set_state(SearchStates.waiting_for_artist_search)
+            
+            # Отправляем сообщение с запросом имени исполнителя (без кнопки "Назад")
+            # Сохраняем ID сообщения для последующего удаления
+            msg = await callback.message.answer("🌨️ Введите исполнителя")
+            await state.update_data(prompt_message_id=msg.message_id)
+            
+            # Сохраняем состояние в кеш
+            state_data = {'prompt_message_id': msg.message_id}
+            set_cached_metadata(cache_key, state_data)
+        
+    except Exception as e:
+        await callback.answer("❌ Произошла ошибка. Попробуйте еще раз.", show_alert=True)
+
+@dp.callback_query(F.data == "premium_features")
+async def show_artist_search_menu(callback: types.CallbackQuery, state: FSMContext):
+    """Показывает форму поиска по исполнителю"""
+    # Быстрый ответ для ускорения
+    await callback.answer("⏳ Обрабатываю...")
     
-    # Отправляем изображение мишки с текстом о поиске по исполнителю
-    try:
+    user_id = str(callback.from_user.id)
+    
+    # Проверяем антиспам
+    is_allowed, time_until = check_antispam(user_id)
+    if not is_allowed:
+        await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
+        return
+    
+    # Проверяем кеш для меню поиска по исполнителю
+    cache_key = f"artist_search_menu_{user_id}"
+    cached_menu = get_cached_metadata(cache_key)
+    
+    if cached_menu:
+        logging.info(f"🎯 Используем кешированное меню поиска по исполнителю для пользователя {user_id}")
+        # Восстанавливаем состояние из кеша
+        await state.set_state(SearchStates.waiting_for_artist)
+        # Отправляем кешированное сообщение
         await callback.message.answer_photo(
             media=types.InputMediaPhoto(
                 media=types.FSInputFile("bear.png"),
-                caption="🐻‍❄️ **Поиск по исполнителям**\n\n"
-                        "🎵 Введите название исполнителя или группы, чьи треки хотите найти.\n\n"
-                        "💡 Примеры:\n"
-                        "• Drake\n"
-                        "• The Weeknd\n"
-                        "• Eminem\n"
-                        "• Coldplay\n"
-                        "• Metallica\n\n"
-                        "🔍 Я найду и загружу для вас лучшие треки этого исполнителя!\n\n"
-                        "⬅ Для возврата нажмите кнопку «Назад»"
-            ),
-            reply_markup=back_button
+                caption=cached_menu.get('caption', "🐻‍❄️ **Поиск по исполнителям**"),
+                reply_markup=back_button
+            )
         )
-    except Exception as e:
-        logging.error(f"❌ Ошибка отправки фото: {e}")
-        await callback.message.edit_text(
-            "🐻‍❄️ **Поиск по исполнителям**\n\n"
-            "🎵 Введите название исполнителя или группы, чьи треки хотите найти.\n\n"
-            "💡 Примеры:\n"
-            "• Drake\n"
-            "• The Weeknd\n"
-            "• Eminem\n"
-            "• Coldplay\n"
-            "• Metallica\n\n"
-            "🔍 Я найду и загружу для вас лучшие треки этого исполнителя!\n\n"
-            "⬅ Для возврата нажмите кнопку «Назад»",
-            parse_mode="Markdown",
-            reply_markup=back_button
-        )
-
-
+    else:
+        # Устанавливаем состояние ожидания ввода имени исполнителя
+        await state.set_state(SearchStates.waiting_for_artist)
+        
+        # Удаляем предыдущее сообщение для чистоты чата
+        try:
+            await callback.message.delete()
+        except:
+            pass  # Игнорируем ошибки удаления
+        
+        # Отправляем изображение мишки с текстом о поиске по исполнителю
+        try:
+            caption_text = "🐻‍❄️ **Поиск по исполнителям**\n\n🎵 Введите название исполнителя или группы, чьи треки хотите найти.\n\n💡 Примеры:\n• Drake\n• The Weeknd\n• Eminem\n• Coldplay\n• Metallica\n\n🔍 Я найду и загружу для вас лучшие треки этого исполнителя!\n\n⬅ Для возврата нажмите кнопку «Назад»"
+            
+            await callback.message.answer_photo(
+                media=types.InputMediaPhoto(
+                    media=types.FSInputFile("bear.png"),
+                    caption=caption_text
+                ),
+                reply_markup=back_button
+            )
+            
+            # Сохраняем в кеш
+            menu_data = {'caption': caption_text}
+            set_cached_metadata(cache_key, menu_data)
+        except Exception as e:
+            logging.error(f"❌ Ошибка отправки фото: {e}")
+            await callback.message.edit_text(
+                "🐻‍❄️ **Поиск по исполнителям**\n\n"
+                "🎵 Введите название исполнителя или группы, чьи треки хотите найти.\n\n"
+                "💡 Примеры:\n"
+                "• Drake\n"
+                "• The Weeknd\n"
+                "• Eminem\n"
+                "• Coldplay\n"
+                "• Metallica\n\n"
+                "🔍 Я найду и загружу для вас лучшие треки этого исполнителя!\n\n"
+                "⬅ Для возврата нажмите кнопку «Назад»",
+                parse_mode="Markdown",
+                reply_markup=back_button
+            )
 
 @dp.callback_query(F.data == "buy_premium")
 async def show_buy_premium_info(callback: types.CallbackQuery):
@@ -2770,8 +2400,6 @@ async def pay_premium_direct(callback: types.CallbackQuery):
     except Exception as e:
         logging.error(f"❌ Ошибка возврата в главное меню: {e}")
         await callback.message.answer("🐻‍❄️ Главное меню", reply_markup=main_menu)
-
-
 
 # Упрощенная функция - больше не нужна
 # @dp.message(F.text == "💎 Оплатить через TON кошелек")
@@ -2877,8 +2505,6 @@ async def back_to_main_from_buy_premium_callback(callback: types.CallbackQuery):
         logging.error(f"❌ Ошибка отправки фото: {e}")
         await callback.message.edit_text("🔙 Возврат в главное меню", reply_markup=main_menu)
 
-
-
 # === Обработчики автоматической оплаты ===
 @dp.pre_checkout_query()
 async def process_pre_checkout(pre_checkout_query: types.PreCheckoutQuery):
@@ -2958,45 +2584,58 @@ async def remove_premium_command(message: types.Message):
         else:
             await message.answer(f"❌ Ошибка при удалении премиум доступа у пользователя: @{target}")
 
-
-
-
-
-
-
-
-
-
-
 # === Поиск ===
 @dp.callback_query(F.data == "find_track")
 async def ask_track_name(callback: types.CallbackQuery, state: FSMContext):
+    # Быстрый ответ для ускорения
+    await callback.answer("⏳ Обрабатываю...")
+    
     user_id = str(callback.from_user.id)
     
     # Проверяем антиспам
     is_allowed, time_until = check_antispam(user_id)
     if not is_allowed:
-        await callback.answer(f"⏳ Подождите {time_until:.1f} сек.", show_alert=True)
+        await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
         return
     
-    # Удаляем предыдущее сообщение для чистоты чата
-    try:
-        await callback.message.delete()
-    except:
-        pass  # Игнорируем ошибки удаления
+    # Проверяем кеш для поиска трека
+    cache_key = f"find_track_{user_id}"
+    cached_search = get_cached_metadata(cache_key)
     
-    # Отправляем изображение мишки с запросом названия трека
-    try:
+    if cached_search:
+        logging.info(f"🎯 Используем кешированное состояние поиска для пользователя {user_id}")
+        # Восстанавливаем состояние из кеша
+        await state.set_state(SearchStates.waiting_for_search)
+        # Отправляем кешированное сообщение
         await callback.message.answer_photo(
             photo=types.FSInputFile("bear.png"),
-            caption="🎵Введите название",
+            caption=cached_search.get('caption', "🎵Введите название"),
             reply_markup=back_button
         )
-    except Exception as e:
-        # Если не удалось отправить фото, отправляем обычное сообщение
-        await callback.message.edit_text("🎵Введите название", reply_markup=back_button)
-    
-    await state.set_state(SearchStates.waiting_for_search)
+    else:
+        # Удаляем предыдущее сообщение для чистоты чата
+        try:
+            await callback.message.delete()
+        except:
+            pass  # Игнорируем ошибки удаления
+        
+        # Отправляем изображение мишки с запросом названия трека
+        try:
+            caption_text = "🎵Введите название"
+            await callback.message.answer_photo(
+                photo=types.FSInputFile("bear.png"),
+                caption=caption_text,
+                reply_markup=back_button
+            )
+            
+            # Сохраняем в кеш
+            search_data = {'caption': caption_text}
+            set_cached_metadata(cache_key, search_data)
+        except Exception as e:
+            # Если не удалось отправить фото, отправляем обычное сообщение
+            await callback.message.edit_text("🎵Введите название", reply_markup=back_button)
+        
+        await state.set_state(SearchStates.waiting_for_search)
 
 @dp.callback_query(F.data == "back_to_main")
 async def back_from_track_search_handler(callback: types.CallbackQuery, state: FSMContext):
@@ -3011,27 +2650,39 @@ async def back_from_track_search_handler(callback: types.CallbackQuery, state: F
     
     await state.clear()
     
-    # Удаляем предыдущее сообщение для чистоты чата
-    try:
-        await callback.message.delete()
-    except:
-        pass  # Игнорируем ошибки удаления
+    # Проверяем кеш для возврата в главное меню
+    cache_key = f"back_from_search_{user_id}"
+    cached_back = get_cached_metadata(cache_key)
     
-    # Отправляем изображение мишки без текста, только с меню
-    try:
-        await callback.message.answer_photo(
-            photo=types.FSInputFile("bear.png"),
+    if cached_back:
+        logging.info(f"🎯 Используем кешированное возвращение в главное меню для пользователя {user_id}")
+        # Восстанавливаем главное меню из кеша
+        await callback.message.edit_media(
+            media=types.InputMediaPhoto(
+                media=types.FSInputFile("bear.png")
+            ),
             reply_markup=main_menu
         )
-    except Exception as e:
-        # Если не удалось отправить фото, отправляем обычное сообщение
-        await callback.message.edit_text("🔙 Возврат в главное меню", reply_markup=main_menu)
-
-
-
-
-
-
+    else:
+        # Удаляем предыдущее сообщение для чистоты чата
+        try:
+            await callback.message.delete()
+        except:
+            pass  # Игнорируем ошибки удаления
+        
+        # Отправляем изображение мишки без текста, только с меню
+        try:
+            await callback.message.answer_photo(
+                photo=types.FSInputFile("bear.png"),
+                reply_markup=main_menu
+            )
+            
+            # Сохраняем в кеш
+            back_data = {'back': 'from_search'}
+            set_cached_metadata(cache_key, back_data)
+        except Exception as e:
+            # Если не удалось отправить фото, отправляем обычное сообщение
+            await callback.message.edit_text("🔙 Возврат в главное меню", reply_markup=main_menu)
 
 @dp.message(SearchStates.waiting_for_artist_search, F.text)
 async def search_by_artist(message: types.Message, state: FSMContext):
@@ -3059,14 +2710,26 @@ async def search_by_artist(message: types.Message, state: FSMContext):
         return
 
     try:
-        # Ищем СТРОГО на YouTube - никакого SoundCloud
-        try:
-            youtube_results = await asyncio.wait_for(
-                search_youtube_artist_improved(artist),
-                timeout=30.0
-            )
-        except Exception as e:
-            youtube_results = None
+        # Проверяем кеш для поиска по исполнителю
+        cache_key = f"search_by_artist_{artist.lower().strip()}_{user_id}"
+        cached_results = get_cached_metadata(cache_key)
+        
+        if cached_results:
+            logging.info(f"🎯 Используем кешированные результаты поиска по исполнителю {artist} для пользователя {user_id}")
+            youtube_results = cached_results
+        else:
+            # Ищем СТРОГО на YouTube - никакого SoundCloud
+            try:
+                youtube_results = await asyncio.wait_for(
+                    search_youtube_artist_improved(artist),
+                    timeout=30.0
+                )
+                
+                # Сохраняем в кеш
+                if youtube_results:
+                    set_cached_metadata(cache_key, youtube_results)
+            except Exception as e:
+                youtube_results = None
         
         if not youtube_results or not youtube_results.get('entries'):
             await message.answer(f"❄️ Не найдено треков исполнителя '{artist}'. Попробуйте другое имя.", reply_markup=main_menu)
@@ -3137,6 +2800,14 @@ async def search_music(message: types.Message, state: FSMContext):
         # Выполняем поиск на YouTube и SoundCloud параллельно
         async def search_youtube(q):
             try:
+                # Проверяем кеш для поиска
+                cache_key = f"youtube_search_{q.lower().strip()}"
+                cached_results = get_cached_search(cache_key)
+                
+                if cached_results:
+                    logging.info(f"🎯 Используем кешированные результаты YouTube для запроса '{q}'")
+                    return cached_results
+                
                 def search_block(q):
                     try:
                         ydl_opts = {
@@ -3165,31 +2836,26 @@ async def search_music(message: types.Message, state: FSMContext):
                     asyncio.to_thread(search_block, q),
                     timeout=12.0  # Еще уменьшили таймаут для ускорения
                 )
+                
+                # Сохраняем результаты в кеш
+                if result:
+                    set_cached_search(cache_key, result)
+                
                 return result
             except Exception as e:
                 return None
         
-        # Запускаем поиск на обеих платформах параллельно с таймаутом
+        # Запускаем поиск только на YouTube
         youtube_task = asyncio.create_task(search_youtube(query))
-        soundcloud_task = asyncio.create_task(search_soundcloud(query))
         
-        # Ждем результаты от обеих платформ с таймаутом 18 секунд (еще уменьшили)
+        # Ждем результаты от YouTube с таймаутом 18 секунд
         try:
-            youtube_info, soundcloud_results = await asyncio.wait_for(
-                asyncio.gather(youtube_task, soundcloud_task, return_exceptions=True),
-                timeout=18.0
-            )
+            youtube_info = await asyncio.wait_for(youtube_task, timeout=18.0)
         except asyncio.TimeoutError:
             youtube_task.cancel()
-            soundcloud_task.cancel()
-            
-            # Пытаемся получить результаты, если они уже есть
-            try:
-                youtube_info = youtube_task.result() if not youtube_task.cancelled() else None
-                soundcloud_results = soundcloud_task.result() if not soundcloud_task.cancelled() else None
-            except:
-                youtube_info = None
-                soundcloud_results = None
+            youtube_info = None
+        
+        soundcloud_results = None
         
         # Обрабатываем результаты YouTube
         logging.info(f"🔍 Обрабатываем результаты YouTube: {type(youtube_info)}")
@@ -3290,8 +2956,6 @@ async def search_music(message: types.Message, state: FSMContext):
             pass
         await message.answer("❌ Произошла ошибка при поиске. Попробуйте еще раз позже.", reply_markup=main_menu)
 
-
-
 @dp.message(SearchStates.waiting_for_artist, F.text)
 async def search_by_artist_input(message: types.Message, state: FSMContext):
     """Обрабатывает ввод имени исполнителя"""
@@ -3320,8 +2984,19 @@ async def search_by_artist_input(message: types.Message, state: FSMContext):
         )
 
     try:
-        # Ищем треки исполнителя
-        results = await asyncio.to_thread(search_artist_tracks, artist_name, 20)
+        # Проверяем кеш для поиска по исполнителю
+        cache_key = f"artist_{artist_name.lower().strip()}"
+        cached_results = get_cached_search(cache_key)
+        
+        if cached_results:
+            logging.info(f"🎯 Используем кешированные результаты для исполнителя {artist_name}")
+            results = cached_results
+        else:
+            # Ищем треки исполнителя
+            results = await asyncio.to_thread(search_artist_tracks, artist_name, 20)
+            # Сохраняем в кеш
+            if results:
+                set_cached_search(cache_key, results)
         
         if not results:
             try:
@@ -3753,81 +3428,18 @@ async def download_soundcloud_from_search(callback: types.CallbackQuery):
 
 # Удалена старая функция build_tracks_keyboard
 
-async def search_soundcloud(query):
-    """Поиск на SoundCloud через yt-dlp"""
-    try:
-        # Формируем поисковый запрос с префиксом scsearch
-        search_query = f"scsearch{SOUNDCLOUD_SEARCH_LIMIT}:{query}"
-        
-        # Используем yt-dlp для поиска
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'quiet': True,
-            'no_warnings': True,
-            'extract_flat': True,  # Извлекаем только метаданные, без скачивания
-            'ignoreerrors': True,
-            'no_warnings': True,
-            'timeout': 25,  # Уменьшаем таймаут для быстрого ответа
-            'retries': 2,   # Уменьшаем количество попыток
-        }
-        
-        logging.info(f"🔍 Запускаем yt-dlp с опциями: {ydl_opts}")
-        
-        # Добавляем таймаут для всего поиска
-        def search_block():
-            try:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    logging.info(f"🔍 Вызываем extract_info для: {search_query}")
-                    info = ydl.extract_info(search_query, download=False)
-                    logging.info(f"🔍 extract_info завершен, результат: {type(info)}")
-                    return info
-            except Exception as e:
-                logging.error(f"❌ Ошибка в search_block SoundCloud: {e}")
-                return None
-        
-        # Выполняем поиск с таймаутом
-        info = await asyncio.wait_for(
-            asyncio.to_thread(search_block),
-            timeout=15.0  # Уменьшили таймаут
-        )
-            
-        if info and 'entries' in info:
-            results = []
-            for entry in info['entries']:
-                if entry and isinstance(entry, dict):
-                    title = entry.get('title', 'Без названия')
-                    url = entry.get('url', '')
-                    duration = entry.get('duration', 0)
-                    
-                    if url and title:
-                        results.append({
-                            'title': title,
-                            'url': url,
-                            'duration': duration,
-                            'source': 'sc',  # Используем 'sc' для SoundCloud
-                        })
-            
-            logging.info(f"🔍 Найдено {len(results)} треков на SoundCloud для запроса: {query}")
-            
-            # Сохраняем результаты в кэш с префиксом SoundCloud
-            cache_key = f"{SOUNDCLOUD_CACHE_PREFIX}:{query}"
-            set_cached_search(cache_key, results)
-            
-            return results
-        
-        logging.warning(f"🔍 Ничего не найдено на SoundCloud: {query}")
-        return []
-    except asyncio.TimeoutError:
-        logging.warning(f"⚠️ Таймаут поиска SoundCloud для запроса: {query}")
-        return []
-    except Exception as e:
-        logging.error(f"❌ Ошибка поиска на SoundCloud: {e}")
-        return []
-
 async def search_youtube_artist_improved(artist):
     """Улучшенный поиск треков исполнителя на YouTube с фильтрацией по длительности и качеству"""
     try:
         logging.info(f"🌨️ YouTube: поиск треков исполнителя '{artist}'")
+        
+        # Проверяем кеш для поиска по исполнителю
+        cache_key = f"youtube_artist_{artist.lower().strip()}"
+        cached_results = get_cached_search(cache_key)
+        
+        if cached_results:
+            logging.info(f"🎯 Используем кешированные результаты YouTube для исполнителя {artist}")
+            return cached_results
         
         def search_block():
             try:
@@ -3927,7 +3539,14 @@ async def search_youtube_artist_improved(artist):
                         logging.info(f"🌨️ YouTube: найден трек '{entry.get('title')}' для исполнителя '{artist}' (длительность: {duration}с)")
             
             logging.info(f"🌨️ YouTube: найдено {len(filtered_tracks)} треков исполнителя '{artist}'")
-            return result if filtered_tracks else None
+            
+            # Сохраняем результаты в кеш
+            if filtered_tracks:
+                result_with_filtered = {'entries': filtered_tracks}
+                set_cached_search(cache_key, result_with_filtered)
+                return result_with_filtered
+            
+            return None
         
         return None
     except Exception as e:
@@ -3938,6 +3557,14 @@ async def search_soundcloud_artist(artist):
     """Поиск треков исполнителя на SoundCloud"""
     try:
         logging.info(f"🌨️ SoundCloud: поиск треков исполнителя '{artist}'")
+        
+        # Проверяем кеш для поиска по исполнителю на SoundCloud
+        cache_key = f"soundcloud_artist_{artist.lower().strip()}"
+        cached_results = get_cached_search(cache_key)
+        
+        if cached_results:
+            logging.info(f"🎯 Используем кешированные результаты SoundCloud для исполнителя {artist}")
+            return cached_results
         
         def search_block():
             try:
@@ -4010,6 +3637,11 @@ async def search_soundcloud_artist(artist):
                                 logging.info(f"🌨️ SoundCloud: найден трек '{title}' для исполнителя '{artist}'")
             
             logging.info(f"🌨️ SoundCloud: найдено {len(results)} треков исполнителя '{artist}'")
+            
+            # Сохраняем результаты в кеш
+            if results:
+                set_cached_search(cache_key, results)
+            
             return results
         
         return []
@@ -4018,18 +3650,28 @@ async def search_soundcloud_artist(artist):
         return []
 
 # === Callback: раздел "Для вас" ===
-@dp.callback_query(F.data == "for_you")
 async def for_you_section(callback: types.CallbackQuery):
     """Показывает рекомендуемые треки для пользователя"""
+    # Быстрый ответ для ускорения
+    await callback.answer("⏳ Обрабатываю...")
+    
     user_id = str(callback.from_user.id)
     
     # Проверяем антиспам
     is_allowed, time_until = check_antispam(user_id)
     if not is_allowed:
-        await callback.answer(f"⏳ Подождите {time_until:.1f} сек.", show_alert=True)
+        await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
         return
     
     try:
+        # Проверяем кеш для рекомендаций пользователя
+        cache_key = f"for_you_{user_id}"
+        cached_recommendations = get_cached_metadata(cache_key)
+        
+        if cached_recommendations:
+            logging.info(f"🎯 Используем кешированные рекомендации для пользователя {user_id}")
+            return cached_recommendations
+        
         # Удаляем предыдущее сообщение для чистоты чата
         try:
             await callback.message.delete()
@@ -4065,7 +3707,6 @@ async def for_you_section(callback: types.CallbackQuery):
                         caption="❌ **Не удалось подобрать треки**\n\nПопробуйте позже или обратитесь в поддержку."
                     ),
                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="🔄 Попробовать снова", callback_data="for_you")],
                         [InlineKeyboardButton(text="⬅ Назад в главное меню", callback_data="back_to_main")]
                     ])
                 )
@@ -4139,48 +3780,13 @@ async def for_you_section(callback: types.CallbackQuery):
                                 pass
                             continue
                         
-                        # Отправляем красивое аудио с изображением
-                        try:
-                            # Пытаемся получить изображение
-                            thumbnail_path = None
-                            original_url = track.get('original_url', '')
-                            
-                            if original_url and ('youtube.com' in original_url or 'youtu.be' in original_url):
-                                # Для YouTube получаем превью
-                                thumbnail_path = await get_youtube_thumbnail(original_url)
-                            else:
-                                # Пытаемся извлечь из аудио файла
-                                thumbnail_path = await extract_audio_thumbnail(filename)
-                            
-                            # Отправляем аудио с метаданными
-                            await bot.send_audio(
-                                chat_id=user_id,
-                                audio=types.FSInputFile(filename),
-                                title=track.get('title', 'Неизвестный трек'),
-                                performer=track.get('uploader', 'Неизвестный исполнитель'),
-                                duration=track.get('duration', 0),
-                                thumb=types.FSInputFile(thumbnail_path) if thumbnail_path and os.path.exists(thumbnail_path) else None
-                            )
-                            
-                            logging.info(f"✅ Красивое аудио отправлено: {track.get('title', 'Неизвестный трек')}")
-                            
-                            # Удаляем временный файл изображения
-                            if thumbnail_path and os.path.exists(thumbnail_path):
-                                try:
-                                    os.remove(thumbnail_path)
-                                    logging.info(f"🗑️ Временное изображение удалено: {thumbnail_path}")
-                                except Exception as e:
-                                    logging.warning(f"⚠️ Не удалось удалить временное изображение: {e}")
-                                    
-                        except Exception as e:
-                            logging.error(f"❌ Ошибка отправки красивого аудио: {e}")
-                            # Fallback: обычная отправка
-                            await bot.send_audio(
-                                chat_id=user_id,
-                                audio=types.FSInputFile(filename),
-                                title=track.get('title', 'Неизвестный трек'),
-                                performer=track.get('uploader', 'Неизвестный исполнитель')
-                            )
+                        # Отправляем аудиофайл
+                        await bot.send_audio(
+                            chat_id=user_id,
+                            audio=types.FSInputFile(filename),
+                            title=track.get('title', 'Неизвестный трек'),
+                            performer=track.get('uploader', 'Неизвестный исполнитель')
+                        )
                         
                         # Удаляем временный файл
                         try:
@@ -4226,7 +3832,6 @@ async def for_you_section(callback: types.CallbackQuery):
                         caption=success_message
                     ),
                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="🔄 Еще рекомендации", callback_data="for_you")],
                         [InlineKeyboardButton(text="⬅ Назад в главное меню", callback_data="back_to_main")]
                     ]),
                     parse_mode="Markdown"
@@ -4244,7 +3849,6 @@ async def for_you_section(callback: types.CallbackQuery):
                                 "Попробуйте позже или обратитесь в поддержку."
                     ),
                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="🔄 Попробовать снова", callback_data="for_you")],
                         [InlineKeyboardButton(text="⬅ Назад в главное меню", callback_data="back_to_main")]
                     ])
                 )
@@ -4261,7 +3865,6 @@ async def for_you_section(callback: types.CallbackQuery):
                     caption="❌ **Произошла ошибка**\n\nПопробуйте позже или обратитесь в поддержку."
                 ),
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🔄 Попробовать снова", callback_data="for_you")],
                     [InlineKeyboardButton(text="⬅ Назад в главное меню", callback_data="back_to_main")]
                 ])
             )
@@ -4273,6 +3876,14 @@ async def get_recommended_tracks(user_id):
     """Получает рекомендуемые треки для пользователя на основе его коллекции или популярных треков"""
     try:
         global user_tracks, user_recommendation_history
+        
+        # Проверяем кеш для рекомендаций пользователя
+        cache_key = f"recommendations_{user_id}"
+        cached_recommendations = get_cached_search(cache_key)
+        
+        if cached_recommendations:
+            logging.info(f"🎯 Используем кешированные рекомендации для пользователя {user_id}")
+            return cached_recommendations
         
         # Инициализируем историю рекомендаций для пользователя
         if 'user_recommendation_history' not in globals():
@@ -4448,7 +4059,12 @@ async def get_recommended_tracks(user_id):
                 history['shown_tracks'] = set(list(history['shown_tracks'])[-50:])
             
             logging.info(f"🎯 Найдено {len(new_tracks)} популярных треков по запросу '{query}'")
-            return new_tracks[:10]
+            
+            # Сохраняем результаты в кеш
+            final_tracks = new_tracks[:10]
+            set_cached_search(cache_key, final_tracks)
+            
+            return final_tracks
         
         return []
         
@@ -4456,16 +4072,18 @@ async def get_recommended_tracks(user_id):
         logging.error(f"❌ Ошибка получения рекомендаций для пользователя {user_id}: {e}")
         return []
 
-
-
-
-
-
-
 async def send_tracks_as_audio(user_id: str, tracks: list, status_msg: types.Message = None):
     """Отправляет треки как аудиофайлы в чат"""
     try:
         logging.info(f"🎯 Отправляю {len(tracks)} треков как аудиофайлы для пользователя {user_id}")
+        
+        # Проверяем кеш для отправки треков
+        cache_key = f"send_tracks_{user_id}_{hashlib.md5(str(tracks).encode()).hexdigest()}"
+        cached_send = get_cached_metadata(cache_key)
+        
+        if cached_send:
+            logging.info(f"🎯 Используем кешированные результаты отправки для пользователя {user_id}")
+            return cached_send
         
         # Если status_msg не передан, создаем сообщение "Поиск..." прямо перед отправкой
         if not status_msg:
@@ -4484,48 +4102,13 @@ async def send_tracks_as_audio(user_id: str, tracks: list, status_msg: types.Mes
                     temp_file_path = await download_track_to_temp(user_id, track['url'], track.get('title', 'Неизвестный трек'))
                     
                     if temp_file_path and os.path.exists(temp_file_path):
-                        # Отправляем красивое аудио с изображением
-                        try:
-                            # Пытаемся получить изображение
-                            thumbnail_path = None
-                            original_url = track.get('original_url', '')
-                            
-                            if original_url and ('youtube.com' in original_url or 'youtu.be' in original_url):
-                                # Для YouTube получаем превью
-                                thumbnail_path = await get_youtube_thumbnail(original_url)
-                            else:
-                                # Пытаемся извлечь из аудио файла
-                                thumbnail_path = await extract_audio_thumbnail(temp_file_path)
-                            
-                            # Отправляем аудио с метаданными
-                            await bot.send_audio(
-                                chat_id=user_id,
-                                audio=types.FSInputFile(temp_file_path),
-                                title=track.get('title', 'Неизвестный трек'),
-                                performer=track.get('uploader', 'Неизвестный исполнитель'),
-                                duration=track.get('duration', 0),
-                                thumb=types.FSInputFile(thumbnail_path) if thumbnail_path and os.path.exists(thumbnail_path) else None
-                            )
-                            
-                            logging.info(f"✅ Красивое аудио отправлено: {track.get('title', 'Неизвестный трек')}")
-                            
-                            # Удаляем временный файл изображения
-                            if thumbnail_path and os.path.exists(thumbnail_path):
-                                try:
-                                    os.remove(thumbnail_path)
-                                    logging.info(f"🗑️ Временное изображение удалено: {thumbnail_path}")
-                                except Exception as e:
-                                    logging.warning(f"⚠️ Не удалось удалить временное изображение: {e}")
-                                    
-                        except Exception as e:
-                            logging.error(f"❌ Ошибка отправки красивого аудио: {e}")
-                            # Fallback: обычная отправка
-                            await bot.send_audio(
-                                chat_id=user_id,
-                                audio=types.FSInputFile(temp_file_path),
-                                title=track.get('title', 'Неизвестный трек'),
-                                performer=track.get('uploader', 'Неизвестный исполнитель')
-                            )
+                        # Отправляем аудиофайл
+                        await bot.send_audio(
+                            chat_id=user_id,
+                            audio=types.FSInputFile(temp_file_path),
+                            title=track.get('title', 'Неизвестный трек'),
+                            performer=track.get('uploader', 'Неизвестный исполнитель')
+                        )
                         
                         # Удаляем временный файл
                         await delete_temp_file(temp_file_path)
@@ -4554,6 +4137,10 @@ async def send_tracks_as_audio(user_id: str, tracks: list, status_msg: types.Mes
         
         logging.info(f"✅ Успешно отправлено {success_count}/{len(tracks)} треков для пользователя {user_id}")
         
+        # Сохраняем результаты в кеш
+        result = {'success_count': success_count, 'total_tracks': len(tracks)}
+        set_cached_metadata(cache_key, result)
+        
     except Exception as e:
         logging.error(f"❌ Ошибка отправки треков как аудиофайлы для пользователя {user_id}: {e}")
         # Удаляем статусное сообщение при ошибке
@@ -4567,23 +4154,39 @@ async def send_tracks_as_audio(user_id: str, tracks: list, status_msg: types.Mes
 @dp.callback_query(F.data == "my_music")
 async def my_music(callback: types.CallbackQuery):
     """Показывает треки пользователя в формате поиска - с кнопками для скачивания"""
+    # Быстрый ответ для ускорения
+    await callback.answer("⏳ Обрабатываю...")
+    
+    global user_tracks
     user_id = str(callback.from_user.id)
     
     # Проверяем антиспам
     is_allowed, time_until = check_antispam(user_id)
     if not is_allowed:
-        await callback.answer(f"⏳ Подождите {time_until:.1f} сек.", show_alert=True)
+        await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
         return
     
-    # Получаем треки пользователя - загружаем заново каждый раз
-    global user_tracks
-    user_tracks = load_json(TRACKS_FILE, {})
+    # Проверяем кеш для треков пользователя
+    cache_key = f"my_music_{user_id}"
+    cached_tracks = get_cached_metadata(cache_key)
     
-    # Проверяем, что user_tracks является словарем
-    if not isinstance(user_tracks, dict):
-        user_tracks = {}
-    
-    tracks = user_tracks.get(user_id, [])
+    if cached_tracks:
+        logging.info(f"🎯 Используем кешированные треки для пользователя {user_id}")
+        tracks = cached_tracks
+    else:
+        # Получаем треки пользователя - загружаем заново каждый раз
+        global user_tracks
+        user_tracks = load_json(TRACKS_FILE, {})
+        
+        # Проверяем, что user_tracks является словарем
+        if not isinstance(user_tracks, dict):
+            user_tracks = {}
+        
+        tracks = user_tracks.get(user_id, [])
+        
+        # Сохраняем в кеш
+        if tracks:
+            set_cached_metadata(cache_key, tracks)
     
     # Проверяем, что tracks не None и является списком
     if tracks is None:
@@ -4698,25 +4301,37 @@ async def my_music(callback: types.CallbackQuery):
 async def play_track(callback: types.CallbackQuery):
     """Скачивает и отправляет один трек по принципу 'Скачать всё'"""
     global user_tracks
-    user_id = str(callback.from_user.id)
-    logging.info(f"🔍 play_track вызван для пользователя: {user_id}")
-    
-    # Проверяем антиспам
-    is_allowed, time_until = check_antispam(user_id)
-    if not is_allowed:
-        await callback.answer(f"⏳ Подождите {time_until:.1f} сек.", show_alert=True)
-        return
-    
     try:
+        user_id = str(callback.from_user.id)
+        logging.info(f"🔍 play_track вызван для пользователя: {user_id}")
+        
+        # Проверяем антиспам
+        is_allowed, time_until = check_antispam(user_id)
+        if not is_allowed:
+            await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
+            return
+        
         # Извлекаем индекс трека
         idx = int(callback.data.split(":")[1])
         logging.info(f"🔍 Индекс трека: {idx}")
         
-        # Получаем треки пользователя
-        if user_tracks is None:
-            user_tracks = {}
+        # Проверяем кеш для треков пользователя
+        cache_key = f"play_track_{user_id}"
+        cached_tracks = get_cached_metadata(cache_key)
         
-        tracks = user_tracks.get(user_id, [])
+        if cached_tracks:
+            logging.info(f"🎯 Используем кешированные треки для play_track пользователя {user_id}")
+            tracks = cached_tracks
+        else:
+            # Получаем треки пользователя
+            if user_tracks is None:
+                user_tracks = {}
+            
+            tracks = user_tracks.get(user_id, [])
+            
+            # Сохраняем в кеш
+            if tracks:
+                set_cached_metadata(cache_key, tracks)
         if not tracks:
             await callback.answer("📂 У вас нет треков.", show_alert=True)
             return
@@ -4738,7 +4353,7 @@ async def play_track(callback: types.CallbackQuery):
                 await callback.answer("❌ Ссылка для скачивания не найдена.", show_alert=True)
                 return
             
-            # Показываем уведомление о скачивании
+            # Показываем уведомление о скачивании без изменения сообщения с плейлистом
             await callback.answer("⏳ Скачиваю трек...", show_alert=False)
             
             try:
@@ -4746,40 +4361,9 @@ async def play_track(callback: types.CallbackQuery):
                 temp_file_path = await download_track_to_temp(user_id, original_url, title)
                 
                 if temp_file_path and os.path.exists(temp_file_path):
-                    # Отправляем красивое аудио с изображением
-                    try:
-                        # Пытаемся получить изображение
-                        thumbnail_path = None
-                        
-                        if original_url and ('youtube.com' in original_url or 'youtu.be' in original_url):
-                            # Для YouTube получаем превью
-                            thumbnail_path = await get_youtube_thumbnail(original_url)
-                        else:
-                            # Пытаемся извлечь из аудио файла
-                            thumbnail_path = await extract_audio_thumbnail(temp_file_path)
-                        
-                        # Отправляем аудио с метаданными
-                        await callback.message.answer_audio(
-                            types.FSInputFile(temp_file_path), 
-                            title=title,
-                            thumb=types.FSInputFile(thumbnail_path) if thumbnail_path and os.path.exists(thumbnail_path) else None
-                        )
-                        
-                        logging.info(f"✅ Красивое аудио отправлено: {title}")
-                        
-                        # Удаляем временный файл изображения
-                        if thumbnail_path and os.path.exists(thumbnail_path):
-                            try:
-                                os.remove(thumbnail_path)
-                                logging.info(f"🗑️ Временное изображение удалено: {thumbnail_path}")
-                            except Exception as e:
-                                logging.warning(f"⚠️ Не удалось удалить временное изображение: {e}")
-                                
-                    except Exception as e:
-                        logging.error(f"❌ Ошибка отправки красивого аудио: {e}")
-                        # Fallback: обычная отправка
-                        await callback.message.answer_audio(types.FSInputFile(temp_file_path), title=title)
-                        logging.info(f"✅ Аудио отправлено (fallback): {title}")
+                    # Отправляем MP3 пользователю
+                    await callback.message.answer_audio(types.FSInputFile(temp_file_path), title=title)
+                    logging.info(f"✅ Трек отправлен: {title}")
                     
                     # Удаляем временный файл после успешной отправки
                     await delete_temp_file(temp_file_path)
@@ -4805,149 +4389,140 @@ async def play_track(callback: types.CallbackQuery):
         logging.error(f"❌ Критическая ошибка в play_track: {e}")
         await callback.answer("❌ Произошла ошибка. Попробуйте еще раз.", show_alert=True)
 
-
-
 # === Callback: download all (self) ===
 @dp.callback_query(F.data == "download_all")
 async def download_all_tracks(callback: types.CallbackQuery):
     global user_tracks
-    user_id = str(callback.from_user.id)
-    
-    # Проверяем антиспам
-    is_allowed, time_until = check_antispam(user_id)
-    if not is_allowed:
-        await callback.answer(f"⏳ Подождите {time_until:.1f} сек.", show_alert=True)
-        return
-    
-    # Проверяем, что user_tracks не None
-    if user_tracks is None:
-        user_tracks = {}
-        logging.warning(f"⚠️ download_all_tracks: user_tracks был None для пользователя {user_id}, инициализируем пустым словарем")
-    
-    tracks = user_tracks.get(user_id, [])
-    
-    # Проверяем, что tracks не None и является списком
-    if tracks is None:
-        tracks = []
-        user_tracks[user_id] = tracks
-        logging.warning(f"⚠️ download_all_tracks: tracks был None для пользователя {user_id}, инициализируем пустым списком")
-    
-    if not tracks:
-        await callback.message.answer("📂 У тебя нет треков.", reply_markup=main_menu)
-        return
-    
-    # Отправляем сообщение о начале загрузки и сохраняем его ID
-    loading_msg = await callback.message.answer("📥 Отправляю все треки...")
-    
-    success_count = 0
-    failed_count = 0
-    
-    for track in tracks:
-        try:
-            # Проверяем формат трека
-            if isinstance(track, dict):
-                # Новый формат: объект с информацией о треке
-                title = track.get('title', 'Неизвестный трек')
-                original_url = track.get('original_url', '')
-                
-                if not original_url or not original_url.startswith('http'):
-                    logging.warning(f"⚠️ Нет валидной ссылки для трека: {title}")
-                    failed_count += 1
-                    continue
-            else:
-                # Старый формат: путь к файлу
-                if not track or not isinstance(track, str):
-                    logging.warning(f"⚠️ Некорректный формат трека: {track}")
-                    failed_count += 1
-                    continue
-                    
-                title = os.path.basename(track)
-                original_url = ""  # Для старых треков ссылка неизвестна
+    try:
+        user_id = str(callback.from_user.id)
+        
+        # Проверяем антиспам
+        is_allowed, time_until = check_antispam(user_id)
+        if not is_allowed:
+            await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
+            return
+        
+        # Проверяем кеш для треков пользователя
+        cache_key = f"download_all_{user_id}"
+        cached_tracks = get_cached_metadata(cache_key)
+        
+        if cached_tracks:
+            logging.info(f"🎯 Используем кешированные треки для download_all пользователя {user_id}")
+            tracks = cached_tracks
+        else:
+            # Проверяем, что user_tracks не None
+            if user_tracks is None:
+                user_tracks = {}
+                logging.warning(f"⚠️ download_all_tracks: user_tracks был None для пользователя {user_id}, инициализируем пустым словарем")
             
-            # Для всех треков (новых и старых) скачиваем заново
-            if original_url and original_url.startswith('http'):
-                try:
-                    logging.info(f"📥 Скачиваю трек: {title} по ссылке: {original_url}")
+            tracks = user_tracks.get(user_id, [])
+            
+            # Проверяем, что tracks не None и является списком
+            if tracks is None:
+                tracks = []
+                user_tracks[user_id] = tracks
+                logging.warning(f"⚠️ download_all_tracks: tracks был None для пользователя {user_id}, инициализируем пустым списком")
+            
+            # Сохраняем в кеш
+            if tracks:
+                set_cached_metadata(cache_key, tracks)
+        
+        if not tracks:
+            await callback.message.answer("📂 У тебя нет треков.", reply_markup=main_menu)
+            return
+        
+        # Отправляем сообщение о начале загрузки и сохраняем его ID
+        loading_msg = await callback.message.answer("📥 Отправляю все треки...")
+        
+        success_count = 0
+        failed_count = 0
+        
+
+        
+        for track in tracks:
+            try:
+                # Проверяем формат трека
+                if isinstance(track, dict):
+                    # Новый формат: объект с информацией о треке
+                    title = track.get('title', 'Неизвестный трек')
+                    original_url = track.get('original_url', '')
                     
-                    # Скачиваем трек во временную папку
-                    temp_file_path = await download_track_to_temp(user_id, original_url, title)
-                    
-                    if temp_file_path and os.path.exists(temp_file_path):
-                        # Отправляем красивое аудио с изображением
-                        try:
-                            # Пытаемся получить изображение
-                            thumbnail_path = None
-                            
-                            if original_url and ('youtube.com' in original_url or 'youtu.be' in original_url):
-                                # Для YouTube получаем превью
-                                thumbnail_path = await get_youtube_thumbnail(original_url)
-                            else:
-                                # Пытаемся извлечь из аудио файла
-                                thumbnail_path = await extract_audio_thumbnail(temp_file_path)
-                            
-                            # Отправляем аудио с метаданными
-                            await callback.message.answer_audio(
-                                types.FSInputFile(temp_file_path), 
-                                title=title,
-                                thumb=types.FSInputFile(thumbnail_path) if thumbnail_path and os.path.exists(thumbnail_path) else None
-                            )
-                            
-                            success_count += 1
-                            logging.info(f"✅ Красивое аудио отправлено: {title}")
-                            
-                            # Удаляем временный файл изображения
-                            if thumbnail_path and os.path.exists(thumbnail_path):
-                                try:
-                                    os.remove(thumbnail_path)
-                                    logging.info(f"🗑️ Временное изображение удалено: {thumbnail_path}")
-                                except Exception as e:
-                                    logging.warning(f"⚠️ Не удалось удалить временное изображение: {e}")
-                            
-                            # Удаляем временный файл после успешной отправки
-                            await delete_temp_file(temp_file_path)
-                            
-                            # Небольшая задержка между отправками
-                            await asyncio.sleep(0.4)
-                            
-                        except Exception as audio_error:
-                            logging.error(f"❌ Ошибка отправки трека {title}: {audio_error}")
+                    if not original_url or not original_url.startswith('http'):
+                        logging.warning(f"⚠️ Нет валидной ссылки для трека: {title}")
+                        failed_count += 1
+                        continue
+                else:
+                    # Старый формат: путь к файлу
+                    if not track or not isinstance(track, str):
+                        logging.warning(f"⚠️ Некорректный формат трека: {track}")
+                        failed_count += 1
+                        continue
+                        
+                    title = os.path.basename(track)
+                    original_url = ""  # Для старых треков ссылка неизвестна
+                
+                # Для всех треков (новых и старых) скачиваем заново
+                if original_url and original_url.startswith('http'):
+                    try:
+                        logging.info(f"📥 Скачиваю трек: {title} по ссылке: {original_url}")
+                        
+                        # Скачиваем трек во временную папку
+                        temp_file_path = await download_track_to_temp(user_id, original_url, title)
+                        
+                        if temp_file_path and os.path.exists(temp_file_path):
+                            # Отправляем MP3 пользователю
+                            try:
+                                await callback.message.answer_audio(types.FSInputFile(temp_file_path), title=title)
+                                success_count += 1
+                                logging.info(f"✅ Трек отправлен: {title}")
+                                
+                                # Удаляем временный файл после успешной отправки
+                                await delete_temp_file(temp_file_path)
+                                
+                                # Небольшая задержка между отправками
+                                await asyncio.sleep(0.4)
+                                
+                            except Exception as audio_error:
+                                logging.error(f"❌ Ошибка отправки трека {title}: {audio_error}")
+                                failed_count += 1
+                                
+                                # Удаляем временный файл даже при ошибке отправки
+                                await delete_temp_file(temp_file_path)
+                        else:
+                            logging.error(f"❌ Не удалось скачать трек: {title}")
                             failed_count += 1
                             
-                            # Удаляем временный файл даже при ошибке отправки
-                            await delete_temp_file(temp_file_path)
-                    else:
-                        logging.error(f"❌ Не удалось скачать трек: {title}")
+                    except Exception as download_error:
+                        logging.error(f"❌ Ошибка при скачивании трека {title}: {download_error}")
                         failed_count += 1
-                        
-                except Exception as download_error:
-                    logging.error(f"❌ Ошибка при скачивании трека {title}: {download_error}")
+                else:
+                    logging.warning(f"⚠️ Не удалось найти валидную ссылку для трека: {title}")
                     failed_count += 1
-            else:
-                logging.warning(f"⚠️ Не удалось найти валидную ссылку для трека: {title}")
+                    
+            except Exception as e:
+                logging.exception(f"❌ Ошибка отправки трека {track}: {e}")
                 failed_count += 1
-                
-        except Exception as e:
-            logging.exception(f"❌ Ошибка отправки трека {track}: {e}")
-            failed_count += 1
-    
-    # Удаляем надпись "📥 Отправляю все треки..." после завершения
-    try:
-        await loading_msg.delete()
-    except:
-        pass  # Игнорируем ошибки удаления
-    
-    # Отправляем итоговое сообщение только если есть ошибки
-    if failed_count > 0:
-        result_message = f"⚠️ **Внимание!**\n\n"
-        result_message += f"❌ **Не удалось отправить:** {failed_count} треков\n\n"
-        result_message += "💡 Возможные причины:\n"
-        result_message += "• Недоступны на YouTube\n"
-        result_message += "• Слишком большими для отправки\n"
-        result_message += "• Защищены авторскими правами\n"
         
-        await callback.message.answer(result_message, parse_mode="Markdown")
-
-
+        # Удаляем надпись "📥 Отправляю все треки..." после завершения
+        try:
+            await loading_msg.delete()
+        except:
+            pass  # Игнорируем ошибки удаления
+        
+        # Отправляем итоговое сообщение только если есть ошибки
+        if failed_count > 0:
+            result_message = f"⚠️ **Внимание!**\n\n"
+            result_message += f"❌ **Не удалось отправить:** {failed_count} треков\n\n"
+            result_message += "💡 Возможные причины:\n"
+            result_message += "• Недоступны на YouTube\n"
+            result_message += "• Слишком большими для отправки\n"
+            result_message += "• Защищены авторскими правами\n"
+            
+            await callback.message.answer(result_message, parse_mode="Markdown")
+        
+    except Exception as e:
+        logging.error(f"❌ Критическая ошибка в download_all_tracks для пользователя {user_id}: {e}")
+        await callback.message.answer("❌ Произошла ошибка при скачивании всех треков.", reply_markup=main_menu)
 
 async def show_updated_tracks_list(message, user_id: str, tracks: list):
     """Показывает обновленный список треков после удаления"""
@@ -5103,636 +4678,7 @@ async def handle_old_format_track(callback: types.CallbackQuery):
     """Обрабатывает треки в старом формате"""
     await callback.answer("⚠️ Этот трек в старом формате. Добавьте его заново через поиск.", show_alert=True)
 
-
-
-
-
-
-
 # === Функции для работы с жанрами ===
-def get_randomized_genres():
-    """Возвращает случайные подмножества поисковых запросов для каждого жанра"""
-    base_genres = get_genres()
-    randomized_genres = {}
-    
-    for genre_name, queries in base_genres.items():
-        # Перемешиваем запросы
-        shuffled_queries = list(queries)
-        random.shuffle(shuffled_queries)
-        
-        # Выбираем случайное количество запросов (от 80% до 100% от общего количества)
-        min_queries = max(10, int(len(shuffled_queries) * 0.8))
-        max_queries = len(shuffled_queries)
-        num_queries = random.randint(min_queries, max_queries)
-        
-        # Берем случайное подмножество
-        selected_queries = random.sample(shuffled_queries, num_queries)
-        randomized_genres[genre_name] = selected_queries
-        
-        logging.info(f"🎲 Жанр {genre_name}: выбрано {num_queries} из {len(queries)} запросов")
-    
-    return randomized_genres
-
-def get_genres():
-    """Возвращает список доступных жанров с поисковыми запросами для случайного поиска"""
-    return {
-        "🎵 Поп": [
-            "pop music 2024 official audio",
-            "popular pop songs official",
-            "best pop hits official audio",
-            "top pop music tracks",
-            "pop songs today official",
-            "latest pop music official",
-            "pop music playlist official",
-            "pop hits 2024 official audio",
-            "pop music new releases",
-            "pop songs popular official",
-            "pop music trending tracks",
-            "pop hits today official",
-            "pop music latest official",
-            "pop songs hits official",
-            "pop music best tracks",
-            "pop hits playlist official",
-            "pop music top tracks",
-            "pop songs 2024 official",
-            "pop music current tracks",
-            "pop hits new releases",
-            "pop music trending songs",
-            "pop songs latest official",
-            "pop music popular tracks",
-            "pop hits current official",
-            "pop music today songs",
-            "pop songs trending official",
-            "pop music hits official",
-            "pop hits latest tracks",
-            "pop music current songs",
-            "pop songs best official",
-            "pop music new hits official"
-        ],
-        "🎸 Рок": [
-            "rock music 2024 official audio",
-            "best rock songs official",
-            "rock hits today official",
-            "popular rock music tracks",
-            "rock songs playlist official",
-            "top rock hits official audio",
-            "rock music latest official",
-            "rock songs 2024 official",
-            "rock hits playlist official",
-            "rock music popular tracks",
-            "rock songs trending official",
-            "rock music best tracks",
-            "rock hits latest official",
-            "rock music new releases",
-            "rock songs hits official",
-            "rock music current tracks",
-            "rock hits new releases",
-            "rock music trending songs",
-            "rock songs latest official",
-            "rock music top tracks",
-            "rock hits current official",
-            "rock music today songs",
-            "rock songs popular official",
-            "rock music hits official",
-            "rock hits trending tracks",
-            "rock music playlist official",
-            "rock songs best official",
-            "rock music new hits official",
-            "rock hits today official",
-            "rock music latest hits official"
-        ],
-        "🎤 Хип-хоп": [
-            "hip hop music 2024 official audio",
-            "rap songs today official",
-            "best hip hop hits official audio",
-            "hip hop music latest tracks",
-            "rap music popular songs official",
-            "hip hop songs playlist official",
-            "top rap hits official audio",
-            "hip hop music trending tracks",
-            "rap songs 2024 official",
-            "hip hop hits playlist music",
-            "rap music best tracks official",
-            "hip hop songs latest official",
-            "rap music new releases",
-            "hip hop hits today music",
-            "rap songs popular official",
-            "hip hop music current tracks",
-            "rap hits new releases",
-            "hip hop music trending songs",
-            "rap songs latest official",
-            "hip hop music top tracks",
-            "rap hits current music",
-            "hip hop music today songs",
-            "rap songs hits official",
-            "hip hop hits trending tracks",
-            "rap music playlist official",
-            "hip hop songs best music",
-            "rap music new hits official",
-            "hip hop hits latest tracks",
-            "rap music current songs",
-            "hip hop songs trending official"
-        ],
-        "🎹 Электроника": [
-            "electronic music 2024",
-            "edm songs today",
-            "best electronic music",
-            "electronic hits latest",
-            "edm music popular",
-            "electronic songs playlist",
-            "top edm hits",
-            "electronic music trending",
-            "edm songs 2024",
-            "electronic hits playlist",
-            "edm music best",
-            "electronic songs latest",
-            "edm music new",
-            "electronic hits today",
-            "edm songs popular",
-            "electronic music current",
-            "edm hits new",
-            "electronic music trending",
-            "edm songs latest",
-            "electronic music top",
-            "edm hits current",
-            "electronic music today",
-            "edm songs hits",
-            "electronic hits trending",
-            "edm music playlist",
-            "electronic songs best",
-            "edm music new hits",
-            "electronic hits latest",
-            "edm music current",
-            "electronic songs trending"
-        ],
-        "🎷 Джаз": [
-            "jazz music 2024",
-            "best jazz songs",
-            "jazz hits today",
-            "popular jazz music",
-            "jazz songs playlist",
-            "top jazz hits",
-            "jazz music latest",
-            "jazz songs 2024",
-            "jazz hits playlist",
-            "jazz music popular",
-            "jazz songs trending",
-            "jazz music best",
-            "jazz hits latest",
-            "jazz music new",
-            "jazz songs hits",
-            "jazz music current",
-            "jazz hits new",
-            "jazz music trending",
-            "jazz songs latest",
-            "jazz music top",
-            "jazz hits current",
-            "jazz music today",
-            "jazz songs popular",
-            "jazz music hits",
-            "jazz hits trending",
-            "jazz music playlist",
-            "jazz songs best",
-            "jazz music new hits",
-            "jazz hits latest",
-            "jazz music current",
-            "jazz songs trending"
-        ],
-        "🎻 Классика": [
-            "classical music 2024",
-            "best classical music",
-            "classical hits today",
-            "popular classical music",
-            "classical music playlist",
-            "top classical hits",
-            "classical music latest",
-            "classical music 2024",
-            "classical hits playlist",
-            "classical music popular",
-            "classical music trending",
-            "classical music best",
-            "classical hits latest",
-            "classical music new",
-            "classical music hits",
-            "classical music current",
-            "classical hits new",
-            "classical music trending",
-            "classical music latest",
-            "classical music top",
-            "classical hits current",
-            "classical music today",
-            "classical music popular",
-            "classical music hits",
-            "classical hits trending",
-            "classical music playlist",
-            "classical music best",
-            "classical music new hits",
-            "classical hits latest",
-            "classical music current",
-            "classical music trending"
-        ],
-        "🎺 Блюз": [
-            "blues music 2024",
-            "best blues songs",
-            "blues hits today",
-            "popular blues music",
-            "blues songs playlist",
-            "top blues hits",
-            "blues music latest",
-            "blues songs 2024",
-            "blues hits playlist",
-            "blues music popular",
-            "blues songs trending",
-            "blues music best",
-            "blues hits latest",
-            "blues music new",
-            "blues songs hits",
-            "blues music current",
-            "blues hits new",
-            "blues music trending",
-            "blues songs latest",
-            "blues music top",
-            "blues hits current",
-            "blues music today",
-            "blues songs popular",
-            "blues music hits",
-            "blues hits trending",
-            "blues music playlist",
-            "blues songs best",
-            "blues music new hits",
-            "blues hits latest",
-            "blues music current",
-            "blues songs trending"
-        ],
-        "🎼 Кантри": [
-            "country music 2024",
-            "best country songs",
-            "country hits today",
-            "popular country music",
-            "country songs playlist",
-            "top country hits",
-            "country music latest",
-            "country songs 2024",
-            "country hits playlist",
-            "country music popular",
-            "country songs trending",
-            "country music best",
-            "country hits latest",
-            "country music new",
-            "country songs hits",
-            "country music current",
-            "country hits new",
-            "country music trending",
-            "country songs latest",
-            "country music top",
-            "country hits current",
-            "country music today",
-            "country songs popular",
-            "country music hits",
-            "country hits trending",
-            "country music playlist",
-            "country songs best",
-            "country music new hits",
-            "country hits latest",
-            "country music current",
-            "country songs trending"
-        ],
-        "🎭 Рэгги": [
-            "reggae music 2024",
-            "best reggae songs",
-            "reggae hits today",
-            "popular reggae music",
-            "reggae songs playlist",
-            "top reggae hits",
-            "reggae music latest",
-            "reggae songs 2024",
-            "reggae hits playlist",
-            "reggae music popular",
-            "reggae songs trending",
-            "reggae music best",
-            "reggae hits latest",
-            "reggae music new",
-            "reggae songs hits",
-            "reggae music current",
-            "reggae hits new",
-            "reggae music trending",
-            "reggae songs latest",
-            "reggae music top",
-            "reggae hits current",
-            "reggae music today",
-            "reggae songs popular",
-            "reggae music hits",
-            "reggae hits trending",
-            "reggae music playlist",
-            "reggae songs best",
-            "reggae music new hits",
-            "reggae hits latest",
-            "reggae music current",
-            "reggae songs trending"
-        ],
-        "🎪 Фолк": [
-            "folk music 2024",
-            "best folk songs",
-            "folk hits today",
-            "popular folk music",
-            "folk songs playlist",
-            "top folk hits",
-            "folk music latest",
-            "folk songs 2024",
-            "folk hits playlist",
-            "folk music popular",
-            "folk songs trending",
-            "folk music best",
-            "folk hits latest",
-            "folk music new",
-            "folk songs hits",
-            "folk music current",
-            "folk hits new",
-            "folk music trending",
-            "folk songs latest",
-            "folk music top",
-            "folk hits current",
-            "folk music today",
-            "folk songs popular",
-            "folk music hits",
-            "folk hits trending",
-            "folk music playlist",
-            "folk songs best",
-            "folk music new hits",
-            "folk hits latest",
-            "folk music current",
-            "folk songs trending"
-        ],
-        "🎨 Альтернатива": [
-            "alternative music 2024",
-            "best alternative songs",
-            "alternative hits today",
-            "popular alternative music",
-            "alternative songs playlist",
-            "top alternative hits",
-            "alternative music latest",
-            "alternative songs 2024",
-            "alternative hits playlist",
-            "alternative music popular",
-            "alternative songs trending",
-            "alternative music best",
-            "alternative hits latest",
-            "alternative music new",
-            "alternative songs hits",
-            "alternative music current",
-            "alternative hits new",
-            "alternative music trending",
-            "alternative songs latest",
-            "alternative music top",
-            "alternative hits current",
-            "alternative music today",
-            "alternative songs popular",
-            "alternative music hits",
-            "alternative hits trending",
-            "alternative music playlist",
-            "alternative songs best",
-            "alternative music new hits",
-            "alternative hits latest",
-            "alternative music current",
-            "alternative songs trending"
-        ],
-        "🎬 Саундтреки": [
-            "soundtrack music 2024",
-            "best soundtrack songs",
-            "soundtrack hits today",
-            "popular soundtrack music",
-            "soundtrack songs playlist",
-            "top soundtrack hits",
-            "soundtrack music latest",
-            "soundtrack songs 2024",
-            "soundtrack hits playlist",
-            "soundtrack music popular",
-            "soundtrack songs trending",
-            "soundtrack music best",
-            "soundtrack hits latest",
-            "soundtrack music new",
-            "soundtrack songs hits",
-            "soundtrack music current",
-            "soundtrack hits new",
-            "soundtrack music trending",
-            "soundtrack songs latest",
-            "soundtrack music top",
-            "soundtrack hits current",
-            "soundtrack music today",
-            "soundtrack songs popular",
-            "soundtrack music hits",
-            "soundtrack hits trending",
-            "soundtrack music playlist",
-            "soundtrack songs best",
-            "soundtrack music new hits",
-            "soundtrack hits latest",
-            "soundtrack music current",
-            "soundtrack songs trending"
-        ]
-    }
-
-def search_genre_tracks(genre_queries, limit=20):
-    """Ищет треки по жанру используя случайные поисковые запросы для разнообразия"""
-    all_results = []
-    
-    try:
-        # Перемешиваем запросы для случайности
-        shuffled_queries = list(genre_queries)
-        random.shuffle(shuffled_queries)
-        
-        # Берем случайное подмножество запросов для разнообразия
-        # Если запросов больше 20, берем случайные 20-35 для большего разнообразия
-        if len(shuffled_queries) > 20:
-            num_queries = random.randint(20, min(35, len(shuffled_queries)))
-            selected_queries = random.sample(shuffled_queries, num_queries)
-        else:
-            selected_queries = shuffled_queries
-        
-        # Добавляем fallback запросы для популярных жанров (более специфичные для музыки)
-        fallback_queries = [
-            "rap music official audio",
-            "hip hop songs official",
-            "popular rap music",
-            "best hip hop tracks",
-            "rap hits official",
-            "hip hop classics official audio"
-        ]
-        
-        # Добавляем fallback запросы к основным
-        selected_queries.extend(fallback_queries)
-        logging.info(f"🎲 Добавлено {len(fallback_queries)} fallback запросов")
-        
-        logging.info(f"🎲 Выбрано {len(selected_queries)} случайных запросов из {len(genre_queries)} доступных")
-        
-        for query in selected_queries:
-            try:
-                # Пробуем разные стратегии поиска (более направленные на музыку)
-                search_strategies = [
-                    f"ytsearch3:{query} official audio",  # Ищем официальные аудио
-                    f"ytsearch3:{query} music",  # Ищем с ключевым словом "music"
-                    f"ytsearch3:{query}",  # Ищем 3 результата
-                    f"ytsearch5:{query}",  # Ищем 5 результатов
-                ]
-                
-                # Если запрос сложный, добавляем упрощенные версии
-                if " - " in query:
-                    artist, song = query.split(" - ", 1)
-                    search_strategies.extend([
-                        f"ytsearch3:{artist} {song}",
-                        f"ytsearch3:{artist}",
-                        f"ytsearch3:{song}"
-                    ])
-                
-                query_success = False
-                
-                for strategy in search_strategies:
-                    if query_success:
-                        break
-                        
-                    try:
-                        # Выполняем поиск для каждого конкретного трека
-                        ydl_opts = {
-                            'format': 'bestaudio/best',
-                            'noplaylist': True,
-                            'quiet': True,
-                            'cookiefile': COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
-                            'extract_flat': True,  # Добавляем для более быстрого поиска
-                            'no_warnings': True,
-                            'ignoreerrors': True,  # Игнорируем ошибки для отдельных запросов
-                            'timeout': 30,  # Увеличиваем таймаут
-                            'retries': 3,  # Количество попыток
-                        }
-                        
-                        # Проверяем cookies
-                        if os.path.exists(COOKIES_FILE):
-                            logging.info(f"🍪 Используем cookies файл: {COOKIES_FILE}")
-                        else:
-                            logging.warning("⚠️ Cookies файл не найден, поиск может быть ограничен")
-                        
-                        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                            try:
-                                # Пробуем текущую стратегию
-                                info = ydl.extract_info(strategy, download=False)
-                                
-                                if not info:
-                                    logging.warning(f"⚠️ Пустой результат поиска для '{query}' (стратегия: {strategy})")
-                                    continue
-                                    
-                                results = info.get("entries", [])
-                                
-                                if results:
-                                    # Фильтруем результаты, чтобы избежать сборников и нарезок
-                                    valid_results = []
-                                    for result in results:
-                                        if not result:
-                                            continue
-                                            
-                                        title = result.get('title', '').lower()
-                                        duration = result.get('duration', 0)
-                                        video_id = result.get('id')
-                                        
-                                        # Улучшенная фильтрация для поиска только музыкальных треков
-                                        if (duration and duration > 60 and  # Трек должен быть длиннее 1 минуты
-                                            duration < 600 and  # И не слишком длинный (не более 10 минут)
-                                            video_id and  # Убеждаемся, что есть ID видео
-                                            # Исключаем сборники, нарезки, обзоры
-                                            'mix' not in title and 
-                                            'compilation' not in title and
-                                            'collection' not in title and
-                                            'best of' not in title and
-                                            'greatest hits' not in title and
-                                            'remix' not in title and
-                                            'cover' not in title and
-                                            'karaoke' not in title and
-                                            'instrumental' not in title and
-                                            'live' not in title and  # Избегаем живых выступлений
-                                            'concert' not in title and
-                                            'performance' not in title and
-                                            # Исключаем обзоры, интервью, документалки
-                                            'review' not in title and
-                                            'interview' not in title and
-                                            'documentary' not in title and
-                                            'analysis' not in title and
-                                            'reaction' not in title and
-                                            'commentary' not in title and
-                                            'podcast' not in title and
-                                            'news' not in title and
-                                            'behind the scenes' not in title and
-                                            'making of' not in title and
-                                            'studio session' not in title and
-                                            # Исключаем клипы с длинными названиями (обычно это обзоры)
-                                            len(title) < 100 and
-                                            # Проверяем, что в названии есть музыкальные ключевые слова
-                                            any(keyword in title for keyword in [
-                                                'music', 'song', 'track', 'audio', 'beat', 'melody',
-                                                'rap', 'hip hop', 'pop', 'rock', 'jazz', 'blues',
-                                                'electronic', 'folk', 'country', 'reggae', 'alternative'
-                                            ]) and
-                                            # Дополнительная проверка: исключаем названия, которые выглядят как обзоры
-                                            not any(pattern in title for pattern in [
-                                                'vs ', 'versus', 'comparison', 'review', 'analysis',
-                                                'breakdown', 'explanation', 'tutorial', 'guide',
-                                                'how to', 'what is', 'why ', 'when ', 'where ',
-                                                'interview', 'podcast', 'news', 'update', 'announcement'
-                                            ])):
-                                            
-                                            valid_results.append(result)
-                                    
-                                    # Добавляем случайное количество результатов (1-5) для большего разнообразия
-                                    if valid_results:
-                                        # Исправляем ошибку randrange - проверяем минимальное количество
-                                        min_count = min(2, len(valid_results))
-                                        max_count = min(5, len(valid_results))
-                                        
-                                        if min_count <= max_count:
-                                            num_to_add = random.randint(min_count, max_count)
-                                            selected_results = random.sample(valid_results, num_to_add)
-                                            all_results.extend(selected_results)
-                                            logging.info(f"✅ Добавлено {num_to_add} треков из запроса '{query}' (стратегия: {strategy})")
-                                            query_success = True
-                                            break
-                                        else:
-                                            logging.warning(f"⚠️ Недостаточно результатов для выбора: {len(valid_results)}")
-                                    else:
-                                        logging.warning(f"⚠️ Нет валидных результатов для '{query}' (стратегия: {strategy})")
-                                else:
-                                    logging.warning(f"⚠️ Нет результатов для запроса '{query}' (стратегия: {strategy})")
-                                    
-                            except Exception as search_error:
-                                logging.error(f"❌ Ошибка поиска для запроса '{query}' (стратегия: {strategy}): {search_error}")
-                                continue
-                                
-                    except Exception as e:
-                        logging.error(f"❌ Ошибка создания yt-dlp для запроса '{query}' (стратегия: {strategy}): {e}")
-                        continue
-                
-                if not query_success:
-                    logging.warning(f"⚠️ Все стратегии поиска не удались для запроса '{query}'")
-                        
-            except Exception as e:
-                logging.error(f"❌ Критическая ошибка обработки запроса '{query}': {e}")
-                continue
-        
-        # Убираем дубликаты по ID
-        unique_results = []
-        seen_ids = set()
-        
-        for result in all_results:
-            if result and result.get('id') and result['id'] not in seen_ids:
-                unique_results.append(result)
-                seen_ids.add(result['id'])
-        
-        logging.info(f"✅ Найдено {len(unique_results)} уникальных треков по жанру")
-        
-        # Перемешиваем результаты для дополнительной случайности
-        random.shuffle(unique_results)
-        
-        # Возвращаем только нужное количество треков
-        return unique_results[:limit]
-        
-    except Exception as e:
-        logging.error(f"❌ Критическая ошибка поиска по жанру: {e}")
-        return []
 
 def search_artist_tracks(artist_name, limit=25):
     """Ищет треки конкретного исполнителя на YouTube и SoundCloud"""
@@ -5873,338 +4819,12 @@ def search_artist_tracks(artist_name, limit=25):
         logging.error(f"❌ Ошибка поиска треков исполнителя {artist_name}: {e}")
         return []
 
-@dp.callback_query(F.data.startswith("genre:"))
-async def handle_genre_selection(callback: types.CallbackQuery):
-    """Обрабатывает выбор жанра и сразу отправляет аудиофайлы для прослушивания"""
-    genre_name = callback.data.split(":", 1)[1]
-    user_id = str(callback.from_user.id)
-    username = callback.from_user.username
-    
-    # Проверяем премиум статус
-    if not is_premium_user(user_id, username):
-        await callback.answer("🔒 Доступ ограничен! Требуется премиум подписка.", show_alert=True)
-        return
-    
-    logging.info(f"🎭 Пользователь {user_id} выбрал жанр: {genre_name}")
-    
-    try:
-        # Обновляем сообщение, показывая что поиск и загрузка начались
-        await callback.message.edit_text(
-            f"🔍 **Поиск и загрузка треков по жанру {genre_name}...**\n\n"
-            "🎵 Ищу лучшие треки и скачиваю их для вас...\n"
-            "⏳ Это может занять несколько минут.",
-            parse_mode="Markdown"
-        )
-    except Exception as edit_error:
-        logging.error(f"❌ Ошибка редактирования сообщения: {edit_error}")
-        # Пытаемся отправить новое сообщение
-        try:
-            await callback.message.answer(
-                f"🔍 **Поиск и загрузка треков по жанру {genre_name}...**\n\n"
-                "🎵 Ищу лучшие треки и скачиваю их для вас...\n"
-                "⏳ Это может занять несколько минут.",
-                parse_mode="Markdown"
-            )
-        except Exception as send_error:
-            logging.error(f"❌ Критическая ошибка отправки сообщения: {send_error}")
-            return
-    
-    try:
-        # Получаем случайные поисковые запросы для выбранного жанра
-        genres = get_randomized_genres()
-        genre_queries = genres.get(genre_name, [])
-        
-        if not genre_queries:
-            await callback.message.edit_text(
-                f"❌ **Ошибка**\n\n"
-                f"🚫 Не удалось найти поисковые запросы для жанра {genre_name}.\n"
-                "💡 Попробуйте выбрать другой жанр.",
-                parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🎭 Выбрать другой жанр", callback_data="show_genres")],
-                    [InlineKeyboardButton(text="⬅ Назад", callback_data="back_to_premium")]
-                ])
-            )
-            return
-        
-        # Добавляем случайность в количество искомых треков (15-25 для большего разнообразия)
-        random_limit = random.randint(15, 25)
-        logging.info(f"🎲 Случайное количество треков для поиска: {random_limit}")
-        
-        # Ищем треки по жанру
-        try:
-            results = await asyncio.to_thread(search_genre_tracks, genre_queries, random_limit)
-            
-        except Exception as search_error:
-            logging.error(f"❌ Ошибка поиска по жанру {genre_name}: {search_error}")
-            await callback.message.edit_text(
-                f"❌ **Ошибка поиска**\n\n"
-                f"🚫 Не удалось выполнить поиск по жанру {genre_name}.\n"
-                "💡 Попробуйте еще раз или выберите другой жанр.",
-                parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🔄 Попробовать снова", callback_data=f"genre:{genre_name}")],
-                    [InlineKeyboardButton(text="🎭 Выбрать другой жанр", callback_data="show_genres")],
-                    [InlineKeyboardButton(text="⬅ Назад", callback_data="back_to_premium")]
-                ])
-            )
-            return
-        
-        if not results:
-            await callback.message.edit_text(
-                f"❌ **Ничего не найдено**\n\n"
-                f"🚫 По жанру {genre_name} ничего не найдено.\n"
-                "💡 Попробуйте выбрать другой жанр или попробовать позже.",
-                parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🎭 Выбрать другой жанр", callback_data="show_genres")],
-                    [InlineKeyboardButton(text="⬅ Назад", callback_data="back_to_premium")]
-                ])
-            )
-            return
-        
-        # Обновляем сообщение о начале загрузки
-        try:
-            await callback.message.edit_text(
-                f"⏳ **Загружаю {len(results)} треков по жанру {genre_name}...**\n\n"
-                "🎵 Скачиваю аудиофайлы для прослушивания...\n"
-                "💡 Это может занять несколько минут.",
-                parse_mode="Markdown"
-            )
-        except Exception as edit_error:
-            logging.error(f"❌ Ошибка редактирования сообщения о загрузке: {edit_error}")
-        
-        # Скачиваем треки и отправляем их как аудиофайлы
-        downloaded_tracks = []
-        failed_tracks = []
-        
-        for i, track in enumerate(results, 1):
-            try:
-                # Обновляем прогресс
-                try:
-                    await callback.message.edit_text(
-                        f"⏳ **Загружаю трек {i}/{len(results)} по жанру {genre_name}...**\n\n"
-                        f"🎵 **{track.get('title', 'Без названия')}**\n"
-                        "💾 Скачиваю аудиофайл...",
-                        parse_mode="Markdown"
-                    )
-                except Exception as edit_error:
-                    logging.error(f"❌ Ошибка обновления прогресса: {edit_error}")
-                
-                # Скачиваем трек с таймаутом
-                url = f"https://www.youtube.com/watch?v={track['id']}"
-                
-                try:
-                    download_task = asyncio.create_task(
-                        download_track_from_url_for_genre(user_id, url)
-                    )
-                    filename = await asyncio.wait_for(download_task, timeout=120.0)  # 2 минуты таймаут
-                except asyncio.TimeoutError:
-                    logging.error(f"❌ Таймаут загрузки трека {track.get('title', 'Без названия')}")
-                    failed_tracks.append(f"{track.get('title', 'Без названия')} (таймаут загрузки)")
-                    continue
-                
-                if filename:
-                    # Проверяем размер файла перед отправкой
-                    try:
-                        file_size = os.path.getsize(filename)
-                        file_size_mb = file_size / (1024 * 1024)
-                        
-                        if file_size_mb > MAX_FILE_SIZE_MB:
-                            logging.warning(f"⚠️ Файл слишком большой для отправки: {file_size_mb:.2f}MB > {MAX_FILE_SIZE_MB}MB")
-                            failed_tracks.append(f"{track.get('title', 'Без названия')} (слишком большой файл)")
-                            # Удаляем слишком большой файл
-                            try:
-                                os.remove(filename)
-                            except:
-                                pass
-                            continue
-                        
-                        downloaded_tracks.append({
-                            'filename': filename,
-                            'title': track.get('title', 'Без названия'),
-                            'duration': track.get('duration', 0),
-                            'size_mb': file_size_mb
-                        })
-                    except Exception as size_error:
-                        logging.error(f"❌ Ошибка проверки размера файла {track.get('title', 'Без названия')}: {size_error}")
-                        failed_tracks.append(f"{track.get('title', 'Без названия')} (ошибка проверки размера)")
-                        continue
-                    
-                    # Отправляем аудиофайл для прослушивания
-                    try:
-                        await callback.message.answer_audio(
-                            types.FSInputFile(filename),
-                            title=track.get('title', 'Без названия'),
-                            performer=f"Жанр: {genre_name}",
-                            duration=track.get('duration', 0)
-                        )
-                        logging.info(f"✅ Аудиофайл отправлен: {track.get('title', 'Без названия')}")
-                    except Exception as audio_error:
-                        logging.error(f"❌ Ошибка отправки аудиофайла {track.get('title', 'Без названия')}: {audio_error}")
-                        # Если не удалось отправить как аудио, отправляем как документ
-                        try:
-                            await callback.message.answer_document(
-                                types.FSInputFile(filename),
-                                caption=f"🎵 **{track.get('title', 'Без названия')}**\n🎭 Жанр: {genre_name}"
-                            )
-                            logging.info(f"✅ Файл отправлен как документ: {track.get('title', 'Без названия')}")
-                        except Exception as doc_error:
-                            logging.error(f"❌ Ошибка отправки документа {track.get('title', 'Без названия')}: {doc_error}")
-                            failed_tracks.append(track.get('title', 'Без названия'))
-                            continue
-                    
-                    # Небольшая задержка между отправками
-                    await asyncio.sleep(0.5)
-                    
-                else:
-                    failed_tracks.append(track.get('title', 'Без названия'))
-                    
-            except Exception as e:
-                logging.error(f"❌ Ошибка загрузки трека {track.get('title', 'Без названия')}: {e}")
-                failed_tracks.append(track.get('title', 'Без названия'))
-                continue
-        
-        # Формируем итоговое сообщение
-        success_count = len(downloaded_tracks)
-        failed_count = len(failed_tracks)
-        
-        message_text = f"✅ **Загрузка треков по жанру {genre_name} завершена!**\n\n"
-        message_text += f"🎵 **Успешно загружено:** {success_count} треков\n"
-        
-        if success_count > 0:
-            total_size = sum(track.get('size_mb', 0) for track in downloaded_tracks)
-            message_text += f"💾 **Общий размер:** {total_size:.1f} MB\n\n"
-        
-        if failed_count > 0:
-            message_text += f"❌ **Не удалось загрузить:** {failed_count} треков\n\n"
-            message_text += "💡 Некоторые треки могли быть:\n"
-            message_text += "• Недоступны на YouTube\n"
-            message_text += "• Слишком большими для отправки\n"
-            message_text += "• Защищены авторскими правами\n"
-            message_text += "• Превысили таймаут загрузки\n\n"
-        
-        message_text += "🎵 Все загруженные треки доступны для прослушивания\n"
-        message_text += "🎵 Аудиофайлы отправлены выше для прослушивания\n\n"
-        message_text += "💡 Теперь вы можете:\n"
-        message_text += "• Слушать треки прямо здесь\n"
-        message_text += "• Выбрать другой жанр\n"
-        message_text += "• 🎲 **Нажать на этот же жанр еще раз для новых треков!**"
-        
-        # Создаем клавиатуру с опциями
-        keyboard_buttons = []
-        
-        if failed_count > 0:
-            keyboard_buttons.append([InlineKeyboardButton(text="🔄 Попробовать снова", callback_data=f"genre:{genre_name}")])
-        
-        keyboard_buttons.extend([
-            [InlineKeyboardButton(text="🎲 Еще треки этого жанра", callback_data=f"genre:{genre_name}")],
-            [InlineKeyboardButton(text="🎭 Выбрать другой жанр", callback_data="show_genres")],
-            [InlineKeyboardButton(text="⬅ Назад", callback_data="back_to_premium")]
-        ])
-        
-        keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
-        
-        try:
-            await callback.message.edit_text(
-                message_text,
-                parse_mode="Markdown",
-                reply_markup=keyboard
-            )
-        except Exception as edit_error:
-            logging.error(f"❌ Ошибка редактирования итогового сообщения: {edit_error}")
-            # Пытаемся отправить новое сообщение
-            try:
-                await callback.message.answer(
-                    message_text,
-                    parse_mode="Markdown",
-                    reply_markup=keyboard
-                )
-            except Exception as send_error:
-                logging.error(f"❌ Критическая ошибка отправки итогового сообщения: {send_error}")
-        
-        logging.info(f"✅ Загружено {success_count} треков по жанру {genre_name} для пользователя {user_id}")
-        
-    except Exception as e:
-        logging.error(f"❌ Критическая ошибка поиска по жанру {genre_name}: {e}")
-        
-        try:
-            await callback.message.edit_text(
-                f"❌ **Критическая ошибка**\n\n"
-                f"🚫 Произошла критическая ошибка при поиске треков по жанру {genre_name}.\n"
-                f"🔍 Ошибка: {str(e)[:100]}...\n\n"
-                "💡 Попробуйте еще раз или выберите другой жанр.",
-                parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🔄 Попробовать снова", callback_data=f"genre:{genre_name}")],
-                    [InlineKeyboardButton(text="🎭 Выбрать другой жанр", callback_data="show_genres")],
-                    [InlineKeyboardButton(text="⬅ Назад", callback_data="back_to_premium")]
-                ])
-            )
-        except Exception as final_error:
-            logging.error(f"❌ Критическая ошибка отправки сообщения об ошибке: {final_error}")
-            # Последняя попытка - отправляем простое сообщение
-            try:
-                await callback.message.answer(
-                    f"❌ Произошла критическая ошибка при поиске по жанру {genre_name}. Попробуйте еще раз.",
-                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="🎭 Выбрать другой жанр", callback_data="show_genres")],
-                        [InlineKeyboardButton(text="⬅ Назад", callback_data="back_to_premium")]
-                    ])
-                )
-            except Exception as last_error:
-                logging.error(f"❌ Полная потеря связи с пользователем {user_id}: {last_error}")
-
-@dp.callback_query(F.data == "show_genres")
-async def show_genres_callback(callback: types.CallbackQuery):
-    """Показывает список жанров через callback"""
-    user_id = str(callback.from_user.id)
-    username = callback.from_user.username
-    
-    # Проверяем премиум статус
-    if not is_premium_user(user_id, username):
-        await callback.answer("🔒 Доступ ограничен! Требуется премиум подписка.", show_alert=True)
-        return
-    
-    genres = get_genres()
-    
-    # Создаем inline клавиатуру с жанрами (по двое в ряд)
-    keyboard = []
-    genre_list = list(genres.keys())
-    
-    # Группируем жанры по двое
-    for i in range(0, len(genre_list), 2):
-        row = [InlineKeyboardButton(text=genre_list[i], callback_data=f"genre:{genre_list[i]}")]
-        if i + 1 < len(genre_list):
-            row.append(InlineKeyboardButton(text=genre_list[i + 1], callback_data=f"genre:{genre_list[i + 1]}"))
-        keyboard.append(row)
-    
-    # Добавляем кнопку "назад"
-    keyboard.append([InlineKeyboardButton(text="⬅ Назад", callback_data="back_to_premium")])
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=keyboard)
-    
-    await callback.message.edit_text(
-        "🎭 **Выберите жанр музыки:**\n\n"
-        "🎵 Я найду и сразу загружу для вас 8-12 случайных треков выбранного жанра!\n\n"
-        "💡 При выборе жанра вы получите:\n"
-        "• Аудиофайлы для прослушивания прямо в чате\n"
-        "• Никаких дополнительных действий не требуется\n"
-        "• 🎲 **Каждый раз новые случайные треки!**\n\n"
-        "🔄 **Нажмите на жанр еще раз для новых треков!**",
-        parse_mode="Markdown",
-        reply_markup=kb
-    )
-
-
-
-
-
-
-
 @dp.callback_query(F.data == "back_to_main")
 async def back_to_main_menu(callback: types.CallbackQuery):
     """Возвращает пользователя в главное меню из inline-меню"""
+    # Быстрый ответ для ускорения
+    await callback.answer("⏳ Обрабатываю...")
+    
     user_id = str(callback.from_user.id)
     
     try:
@@ -6230,6 +4850,9 @@ async def back_to_main_menu(callback: types.CallbackQuery):
 @dp.callback_query(F.data == "search_artist_again")
 async def search_artist_again_callback(callback: types.CallbackQuery, state: FSMContext):
     """Повторный поиск по исполнителю"""
+    # Быстрый ответ для ускорения
+    await callback.answer("⏳ Обрабатываю...")
+    
     user_id = str(callback.from_user.id)
     username = callback.from_user.username
     
@@ -6311,8 +4934,19 @@ async def search_artist_retry_callback(callback: types.CallbackQuery, state: FSM
         )
     
     try:
-        # Ищем треки исполнителя
-        results = await asyncio.to_thread(search_artist_tracks, artist_name, 20)
+        # Проверяем кеш для поиска по исполнителю
+        cache_key = f"artist_{artist_name.lower().strip()}"
+        cached_results = get_cached_search(cache_key)
+        
+        if cached_results:
+            logging.info(f"🎯 Используем кешированные результаты для исполнителя {artist_name}")
+            results = cached_results
+        else:
+            # Ищем треки исполнителя
+            results = await asyncio.to_thread(search_artist_tracks, artist_name, 20)
+            # Сохраняем в кеш
+            if results:
+                set_cached_search(cache_key, results)
         
         if not results:
             await search_msg.edit_text(
@@ -6547,22 +5181,6 @@ async def handle_forwarded_audio(message: types.Message):
     else:
         # Если это не пересланное сообщение, просто игнорируем
         pass
-
-# === ГЛОБАЛЬНЫЙ ОБРАБОТЧИК ОШИБОК ДЛЯ CALLBACK QUERY ===
-@dp.callback_query()
-async def handle_callback_query_error(callback: types.CallbackQuery):
-    """Обрабатывает все необработанные callback query для предотвращения ошибок"""
-    try:
-        # Логируем неизвестный callback data
-        logging.warning(f"⚠️ Неизвестный callback data: {callback.data} от пользователя {callback.from_user.id}")
-        
-        # Пытаемся ответить пользователю
-        await callback.answer("❌ Неизвестная команда. Попробуйте еще раз.", show_alert=True)
-    except Exception as e:
-        if "query is too old" in str(e) or "response timeout expired" in str(e):
-            logging.warning(f"⚠️ Callback query устарел для неизвестной команды {callback.data}")
-        else:
-            logging.warning(f"⚠️ Ошибка обработки неизвестного callback: {e}")
 
 # === Запуск ===
 async def main():
@@ -7357,6 +5975,14 @@ async def download_track_to_temp(user_id: str, url: str, title: str) -> str:
     try:
         logging.info(f"📥 Скачиваю трек во временную папку: {title}")
         
+        # Проверяем кеш для скачанных файлов
+        cache_key = f"download_{hashlib.md5(url.encode()).hexdigest()}"
+        cached_file = get_cached_metadata(cache_key)
+        
+        if cached_file and os.path.exists(cached_file):
+            logging.info(f"🎯 Используем кешированный файл для {title}")
+            return cached_file
+        
         # Создаем уникальное имя файла
         safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).rstrip()
         safe_title = safe_title[:50]  # Ограничиваем длину
@@ -7408,25 +6034,6 @@ async def download_track_to_temp(user_id: str, url: str, title: str) -> str:
             async with download_semaphore:
                 loop = asyncio.get_running_loop()
                 logging.info(f"🔍 Запускаю скачивание через yt-dlp: {url}")
-                
-                # Оптимизированные настройки yt-dlp
-                ydl_opts = {
-                    'format': 'bestaudio/best',
-                    'quiet': True,
-                    'no_warnings': True,
-                    'ignoreerrors': True,
-                    'timeout': DOWNLOAD_TIMEOUT,
-                    'retries': 2,
-                    'nocheckcertificate': True,
-                    'extractaudio': True,
-                    'audioformat': 'mp3',
-                    'audioquality': '192K',
-                    'outtmpl': outtmpl,
-                }
-                
-                if os.path.exists(COOKIES_FILE):
-                    ydl_opts['cookiefile'] = COOKIES_FILE
-                
                 fn_info = await loop.run_in_executor(yt_executor, _ydl_download_blocking, url, outtmpl, COOKIES_FILE, False)
         except Exception as executor_error:
             logging.error(f"❌ Ошибка в ThreadPoolExecutor: {executor_error}")
@@ -7481,6 +6088,10 @@ async def download_track_to_temp(user_id: str, url: str, title: str) -> str:
                 return None
                 
             logging.info(f"✅ Трек успешно скачан: {downloaded_file} ({size_mb:.2f}MB)")
+            
+            # Сохраняем путь к файлу в кеш
+            set_cached_metadata(cache_key, downloaded_file)
+            
             return downloaded_file
             
         except Exception as size_error:
@@ -7623,6 +6234,14 @@ async def download_track_from_url_with_priority(user_id: str, url: str, is_premi
             logging.error("❌ download_track_from_url_with_priority: некорректные параметры")
             return None
         
+        # Проверяем кеш для скачанных файлов
+        cache_key = f"download_priority_{hashlib.md5(url.encode()).hexdigest()}"
+        cached_file = get_cached_metadata(cache_key)
+        
+        if cached_file and os.path.exists(cached_file):
+            logging.info(f"🎯 Используем кешированный файл для {url}")
+            return cached_file
+        
         # Получаем информацию о треке для названия
         try:
             ydl_opts = {
@@ -7650,6 +6269,10 @@ async def download_track_from_url_with_priority(user_id: str, url: str, is_premi
         
         if temp_file_path:
             logging.info(f"✅ Трек успешно скачан во временную папку: {temp_file_path}")
+            
+            # Сохраняем путь к файлу в кеш
+            set_cached_metadata(cache_key, temp_file_path)
+            
             return temp_file_path
         else:
             logging.error(f"❌ Не удалось скачать трек во временную папку: {title}")
