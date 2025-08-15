@@ -27,12 +27,13 @@ YOOMONEY_AVAILABLE = False
 logging.info("✅ Платежные системы отключены - бот работает в упрощенном режиме")
 
 import re
-from functools import partial
+from functools import partial, lru_cache
 import aiohttp
 from datetime import datetime, timedelta
 from collections import deque
 from asyncio import PriorityQueue
 from concurrent.futures import ThreadPoolExecutor
+from typing import Optional, List
 
 # Загрузка переменных окружения
 try:
@@ -91,9 +92,9 @@ PREMIUM_GRACE_PERIOD = 259200  # 3 дня в секундах (грация по
 PREMIUM_EXPIRY_WARNING = 86400  # 1 день в секундах (предупреждение об истечении)
 
 ARTIST_FACTS_FILE = os.path.join(os.path.dirname(__file__), "artist_facts.json")
-PREMIUM_USERS_FILE = os.path.join(os.path.dirname(__file__), "premium_users.json")
-SEARCH_CACHE_TTL = 600
-PAGE_SIZE = 10  # для постраничной навигации
+PREMIUM_USERS_FILE = os.path.join(os.path.dirname(__file__), "artist_facts.json")
+# SEARCH_CACHE_TTL теперь определяется в оптимизированных настройках
+PAGE_SIZE = 15  # Увеличили размер страницы для лучшей производительности
 
 # === НАСТРОЙКИ ПРИОРИТЕТНОЙ ОЧЕРЕДИ ===
 PREMIUM_QUEUE = PriorityQueue()  # Приоритетная очередь для премиум пользователей
@@ -105,13 +106,19 @@ last_webhook_update = None
 webhook_update_queue = asyncio.Queue()
 
 # === ОПТИМИЗАЦИЯ ПАРАЛЛЕЛЬНЫХ ЗАГРУЗОК ===
-MAX_CONCURRENT_DOWNLOADS = 5  # Увеличили количество одновременных загрузок
-MAX_CONCURRENT_DOWNLOADS_PER_USER = 2  # Максимум 2 загрузки на пользователя
+MAX_CONCURRENT_DOWNLOADS = 8  # Увеличили для лучшей производительности
+MAX_CONCURRENT_DOWNLOADS_PER_USER = 3  # Больше загрузок на пользователя
 ACTIVE_DOWNLOADS = 0  # Счетчик активных загрузок
 user_download_semaphores = {}  # Семафоры для каждого пользователя
 
+# === ОПТИМИЗАЦИЯ КЭША ===
+MAX_CACHE_SIZE_MB = 1024  # 1GB кэш
+CACHE_CLEANUP_THRESHOLD = 0.8  # Очистка при 80% заполнении
+DOWNLOAD_TIMEOUT = 60  # Увеличили таймаут для стабильности
+SEARCH_CACHE_TTL = 1800  # 30 минут кэш поиска
+
 # === ГЛОБАЛЬНЫЕ ОБЪЕКТЫ ДЛЯ ЗАГРУЗОК ===
-yt_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="yt_downloader")  # Увеличили количество потоков
+yt_executor = ThreadPoolExecutor(max_workers=12, thread_name_prefix="yt_downloader")  # Увеличили количество потоков
 download_semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
 
 # === ОТСЛЕЖИВАНИЕ ФОНОВЫХ ЗАДАЧ ===
@@ -124,6 +131,8 @@ SOUNDCLOUD_CACHE_PREFIX = "sc"  # Префикс для кэша SoundCloud
 # === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
 user_tracks = {}
 user_recommendation_history = {}
+track_metadata_cache = {}  # Кэш метаданных треков
+search_cache = {}  # Кэш результатов поиска
 
 # === НАСТРОЙКИ АНТИСПАМА ===
 ANTISPAM_DELAY = 1.0  # Задержка между запросами в секундах (1 сек)
@@ -142,6 +151,12 @@ dp = Dispatcher()
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 # === ФУНКЦИИ ДЛЯ ОПТИМИЗАЦИИ ЗАГРУЗОК ===
+
+# === КЭШИРОВАНИЕ ===
+@lru_cache(maxsize=1000)
+def get_cached_metadata(url: str) -> Optional[dict]:
+    """Кэширует метаданные треков в памяти"""
+    return track_metadata_cache.get(url)
 
 def get_user_download_semaphore(user_id: str) -> asyncio.Semaphore:
     """Получает или создает семафор для конкретного пользователя"""
@@ -167,6 +182,133 @@ async def cleanup_user_semaphores():
                 
         except Exception as e:
             await asyncio.sleep(60)
+
+# === МЕНЕДЖЕР КЭША ===
+class CacheManager:
+    """Менеджер кэша с автоматической очисткой"""
+    
+    def __init__(self, max_size_mb: int = MAX_CACHE_SIZE_MB):
+        self.max_size_mb = max_size_mb
+        self.cache_info = {}
+        self.last_cleanup = time.time()
+    
+    def add_file(self, file_path: str, metadata: dict):
+        """Добавляет файл в кэш"""
+        if os.path.exists(file_path):
+            size_mb = os.path.getsize(file_path) / (1024 * 1024)
+            self.cache_info[file_path] = {
+                'size_mb': size_mb,
+                'metadata': metadata,
+                'added_time': time.time(),
+                'access_time': time.time()
+            }
+            self._check_cleanup()
+    
+    def get_file(self, file_path: str) -> Optional[dict]:
+        """Получает информацию о файле из кэша"""
+        if file_path in self.cache_info:
+            self.cache_info[file_path]['access_time'] = time.time()
+            return self.cache_info[file_path]['metadata']
+        return None
+    
+    def _check_cleanup(self):
+        """Проверяет необходимость очистки кэша"""
+        current_time = time.time()
+        if current_time - self.last_cleanup < 300:  # Каждые 5 минут
+            return
+        
+        total_size = sum(info['size_mb'] for info in self.cache_info.values())
+        if total_size > self.max_size_mb * CACHE_CLEANUP_THRESHOLD:
+            self._cleanup_cache()
+            self.last_cleanup = current_time
+    
+    def _cleanup_cache(self):
+        """Очищает кэш, удаляя старые и редко используемые файлы"""
+        try:
+            # Сортируем файлы по времени последнего доступа
+            sorted_files = sorted(
+                self.cache_info.items(),
+                key=lambda x: x[1]['access_time']
+            )
+            
+            # Удаляем файлы до достижения целевого размера
+            target_size = self.max_size_mb * 0.5  # Цель - 50% от максимума
+            current_size = sum(info['size_mb'] for info in self.cache_info.values())
+            
+            for file_path, info in sorted_files:
+                if current_size <= target_size:
+                    break
+                
+                try:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        logging.info(f"Удален файл кэша: {file_path}")
+                    del self.cache_info[file_path]
+                    current_size -= info['size_mb']
+                except Exception as e:
+                    logging.error(f"Ошибка удаления файла кэша {file_path}: {e}")
+            
+            logging.info(f"Очистка кэша завершена. Текущий размер: {current_size:.2f}MB")
+            
+        except Exception as e:
+            logging.error(f"Ошибка очистки кэша: {e}")
+
+# Создаем глобальный менеджер кэша
+cache_manager = CacheManager()
+
+# === ОПТИМИЗИРОВАННЫЕ ФУНКЦИИ ПОИСКА ===
+@lru_cache(maxsize=500)
+async def search_tracks_cached(query: str, limit: int = 10) -> List[dict]:
+    """Кэшированный поиск треков"""
+    cache_key = f"{query}_{limit}"
+    
+    if cache_key in search_cache:
+        cache_entry = search_cache[cache_key]
+        if time.time() - cache_entry['timestamp'] < SEARCH_CACHE_TTL:
+            return cache_entry['results']
+    
+    # Выполняем поиск (здесь должна быть ваша логика поиска)
+    results = []  # Замените на реальную логику поиска
+    
+    # Кэшируем результаты
+    search_cache[cache_key] = {
+        'results': results,
+        'timestamp': time.time()
+    }
+    
+    return results
+
+async def cleanup_search_cache():
+    """Очищает устаревшие записи кэша поиска"""
+    try:
+        current_time = time.time()
+        expired_keys = [
+            key for key, entry in search_cache.items()
+            if current_time - entry['timestamp'] > SEARCH_CACHE_TTL
+        ]
+        
+        for key in expired_keys:
+            del search_cache[key]
+        
+        if expired_keys:
+            logging.info(f"Очищено {len(expired_keys)} устаревших записей кэша поиска")
+            
+    except Exception as e:
+        logging.error(f"Ошибка очистки кэша поиска: {e}")
+
+async def _cache_monitor():
+    """Мониторинг кэша"""
+    try:
+        # Проверяем размер кэша
+        cache_size = sum(info['size_mb'] for info in cache_manager.cache_info.values())
+        logging.info(f"Размер кэша: {cache_size:.2f}MB / {MAX_CACHE_SIZE_MB}MB")
+        
+        # Проверяем размер кэша поиска
+        search_cache_size = len(search_cache)
+        logging.info(f"Размер кэша поиска: {search_cache_size} записей")
+        
+    except Exception as e:
+        logging.error(f"Ошибка в мониторинге кэша: {e}")
 
 # === УНИВЕРСАЛЬНАЯ СИСТЕМА УПРАВЛЕНИЯ ФОНОВЫМИ ЗАДАЧАМИ ===
 
@@ -315,6 +457,12 @@ def start_background_tasks():
         asyncio.create_task(run_periodic_task("Мониторинг премиума", task_premium_monitoring, 3600))
         asyncio.create_task(run_periodic_task("Задачи очистки", task_cleanup_tasks, 3600))
         asyncio.create_task(run_periodic_task("Оптимизация треков", task_tracks_optimization, 7200))  # Каждые 2 часа
+        
+        # Запускаем задачи оптимизации кэша
+        asyncio.create_task(run_periodic_task("Очистка кэша поиска", cleanup_search_cache, 1800))  # Каждые 30 минут
+        
+        # Запускаем мониторинг кэша
+        asyncio.create_task(run_periodic_task("Мониторинг кэша", _cache_monitor, 600))  # Каждые 10 минут
         
         # Запускаем мониторинг статуса задач
         asyncio.create_task(log_task_status())
@@ -2126,8 +2274,8 @@ async def download_track_from_url(user_id, url):
                 'no_warnings': True,
                 'ignoreerrors': True,
                 'extract_flat': True,  # Только метаданные, без скачивания
-                'timeout': 10,  # Уменьшаем таймаут для быстрого ответа
-                'retries': 1,   # Уменьшаем количество попыток
+                'timeout': DOWNLOAD_TIMEOUT,  # Используем оптимизированный таймаут
+                'retries': 2,   # Увеличили количество попыток для стабильности
                 'nocheckcertificate': True,  # Пропускаем проверку сертификата для скорости
             }
             
@@ -7138,6 +7286,25 @@ async def download_track_to_temp(user_id: str, url: str, title: str) -> str:
             async with download_semaphore:
                 loop = asyncio.get_running_loop()
                 logging.info(f"🔍 Запускаю скачивание через yt-dlp: {url}")
+                
+                # Оптимизированные настройки yt-dlp
+                ydl_opts = {
+                    'format': 'bestaudio/best',
+                    'quiet': True,
+                    'no_warnings': True,
+                    'ignoreerrors': True,
+                    'timeout': DOWNLOAD_TIMEOUT,
+                    'retries': 2,
+                    'nocheckcertificate': True,
+                    'extractaudio': True,
+                    'audioformat': 'mp3',
+                    'audioquality': '192K',
+                    'outtmpl': outtmpl,
+                }
+                
+                if os.path.exists(COOKIES_FILE):
+                    ydl_opts['cookiefile'] = COOKIES_FILE
+                
                 fn_info = await loop.run_in_executor(yt_executor, _ydl_download_blocking, url, outtmpl, COOKIES_FILE, False)
         except Exception as executor_error:
             logging.error(f"❌ Ошибка в ThreadPoolExecutor: {executor_error}")
