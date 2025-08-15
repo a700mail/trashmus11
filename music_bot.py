@@ -2626,7 +2626,7 @@ async def search_music(message: types.Message, state: FSMContext):
                         
                         logging.info(f"🔍 YouTube: создаем YoutubeDL с опциями {ydl_opts}")
                         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                            search_query = f"ytsearch10:{q}"  # Увеличили с 5 до 10 для лучшего качества
+                            search_query = f"ytsearch5:{q}"  # Оптимально: 5 лучших результатов
                             logging.info(f"🔍 YouTube: вызываем extract_info для '{search_query}'")
                             result = ydl.extract_info(search_query, download=False)
                             logging.info(f"🔍 YouTube: extract_info завершен, результат: {type(result)}")
@@ -2762,8 +2762,12 @@ async def search_music(message: types.Message, state: FSMContext):
         # Сортируем по релевантности (простая эвристика - сначала короткие названия)
         all_results.sort(key=lambda x: len(x.get('title', '')))
         
-        # Передаем больше результатов для фильтрации (длительность будет проверяться в send_search_results)
-        final_results = all_results[:20]  # Увеличиваем с 5 до 20
+        # Гарантируем 5 YouTube + 5 SoundCloud результатов
+        youtube_results_filtered = [r for r in all_results if r.get('source') != 'sc'][:5]
+        soundcloud_results_filtered = [r for r in all_results if r.get('source') == 'sc'][:5]
+        
+        # Объединяем результаты
+        final_results = youtube_results_filtered + soundcloud_results_filtered
         
         # Удаляем сообщение "Поиск.." перед отправкой результатов
         await search_msg.delete()
@@ -3164,7 +3168,7 @@ async def send_search_results(chat_id, results):
         # Отправляем результаты с минимальным текстом (Telegram не позволяет пустые сообщения)
         await bot.send_message(
             chat_id, 
-            "🐻‍❄️ Результат", 
+            f"🐻‍❄️ Найдено {len(final_results)} результатов (5 YouTube + 5 SoundCloud)", 
             reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
         )
         
