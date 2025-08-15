@@ -1,0 +1,10 @@
+aiogram
+yt-dlp
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+browser-cookie3
+requests
+aiohttp
+python-dotenv
+flask
