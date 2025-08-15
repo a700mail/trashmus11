@@ -54,9 +54,9 @@ def run_bot_in_thread():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
-        # Импортируем и запускаем бота
-        from music_bot import main
-        loop.run_until_complete(main())
+        # Импортируем и запускаем бота через main_worker (без polling)
+        from music_bot import main_worker
+        loop.run_until_complete(main_worker())
     except Exception as e:
         logger.error(f"Bot thread error: {e}")
     finally:
