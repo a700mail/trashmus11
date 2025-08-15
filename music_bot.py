@@ -2139,14 +2139,11 @@ async def by_artist_section(callback: types.CallbackQuery, state: FSMContext):
         return
     
     try:
-        # Удаляем предыдущее сообщение для чистоты чата
-        await callback.message.delete()
-        
         # Переходим в состояние ожидания ввода исполнителя
         await state.set_state(SearchStates.waiting_for_artist_search)
         
-        # Отправляем сообщение с запросом имени исполнителя
-        await callback.message.answer("🌨️ Введите исполнителя", reply_markup=back_button)
+        # Отправляем сообщение с запросом имени исполнителя (без кнопки "Назад")
+        await callback.message.answer("🌨️ Введите исполнителя")
         
     except Exception as e:
         await callback.answer("❌ Произошла ошибка. Попробуйте еще раз.", show_alert=True)
@@ -2550,6 +2547,17 @@ async def search_by_artist(message: types.Message, state: FSMContext):
     """Поиск треков по исполнителю - СТРОГО YouTube с улучшенной фильтрацией"""
     artist = message.text.strip()
     user_id = str(message.from_user.id)
+    
+    # Удаляем надпись "🌨️ Введите исполнителя" после запуска поиска
+    try:
+        # Ищем и удаляем предыдущее сообщение с надписью
+        async for msg in message.bot.get_chat_history(message.chat.id, limit=10):
+            if msg.text == "🌨️ Введите исполнителя":
+                await msg.delete()
+                                break
+    except:
+        pass  # Игнорируем ошибки удаления
+    
     await state.clear()
 
     # Проверяем, что запрос не пустой
@@ -2591,10 +2599,12 @@ async def search_by_artist(message: types.Message, state: FSMContext):
             await message.answer(f"❄️ Не найдено подходящих треков исполнителя '{artist}' (все треки слишком короткие или длинные).", reply_markup=main_menu)
             return
         
-        # Перемешиваем и берем первые 15
+        # Перемешиваем и берем первые 10 (улучшенная рандомизация)
         import random
+        # Используем seed на основе времени и user_id для лучшей рандомизации
+        random.seed(int(time.time()) + hash(user_id))
         random.shuffle(filtered_tracks)
-        selected_tracks = filtered_tracks[:15]
+        selected_tracks = filtered_tracks[:10]
         
         # Отправляем треки как аудиофайлы
         await send_tracks_as_audio(user_id, selected_tracks, None)
