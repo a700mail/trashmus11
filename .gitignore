@@ -69,9 +69,6 @@ cache/
 # Payment and sensitive data
 payment_requests.json
 premium_users.json
-tracks.json
-search_cache.json
-cookies.txt
 
 # Test files
 test_*.py
