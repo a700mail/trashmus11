@@ -2581,25 +2581,12 @@ back_button = InlineKeyboardMarkup(
 @dp.callback_query(F.data == "back_to_main")
 async def back_to_main_menu(callback: types.CallbackQuery):
     """Возвращает пользователя в главное меню"""
-    try:
-        # Быстрый ответ для ускорения
-        await callback.answer("⏳ Обрабатываю...")
-    except Exception as callback_error:
-        if "query is too old" in str(callback_error) or "response timeout expired" in str(callback_error):
-            logging.warning(f"⚠️ Callback query устарел для back_to_main от пользователя {callback.from_user.id}")
-            return
-        else:
-            raise callback_error
-    
     user_id = str(callback.from_user.id)
     
     # Проверяем антиспам
     is_allowed, time_until = check_antispam(user_id)
     if not is_allowed:
-        try:
-            await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
-        except Exception:
-            pass  # Игнорируем ошибки callback answer
+        await callback.answer(f"⏳ Подождите {time_until:.1f} сек.", show_alert=True)
         return
     
     try:
@@ -2638,33 +2625,19 @@ async def send_welcome(message: types.Message):
 @dp.callback_query(F.data == "by_artist")
 async def by_artist_section(callback: types.CallbackQuery, state: FSMContext):
     """Открывает поиск по исполнителю"""
-    try:
-        # Быстрый ответ для ускорения
-        await callback.answer("⏳ Обрабатываю...")
-    except Exception as callback_error:
-        if "query is too old" in str(callback_error) or "response timeout expired" in str(callback_error):
-            logging.warning(f"⚠️ Callback query устарел для by_artist от пользователя {callback.from_user.id}")
-            return
-        else:
-            raise callback_error
-    
     user_id = str(callback.from_user.id)
     
     # Проверяем антиспам
     is_allowed, time_until = check_antispam(user_id)
     if not is_allowed:
-        try:
-            await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
-        except Exception:
-            pass  # Игнорируем ошибки callback answer
+        await callback.answer(f"⏳ Подождите {time_until:.1f} сек.", show_alert=True)
         return
     
     try:
         # Переходим в состояние ожидания ввода имени исполнителя
         await state.set_state(SearchStates.waiting_for_artist_search)
         
-        # Отправляем сообщение с запросом имени исполнителя (без кнопки "Назад")
-        # Сохраняем ID сообщения для последующего удаления
+        # Отправляем сообщение с запросом имени исполнителя
         msg = await callback.message.answer("🌨️ Введите исполнителя")
         await state.update_data(prompt_message_id=msg.message_id)
         
@@ -2674,8 +2647,6 @@ async def by_artist_section(callback: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data == "premium_features")
 async def show_artist_search_menu(callback: types.CallbackQuery, state: FSMContext):
     """Показывает форму поиска по исполнителю"""
-    # Быстрый ответ для ускорения
-    await callback.answer("⏳ Обрабатываю...")
     
     user_id = str(callback.from_user.id)
     
@@ -3000,25 +2971,12 @@ async def remove_premium_command(message: types.Message):
 # === Поиск ===
 @dp.callback_query(F.data == "find_track")
 async def ask_track_name(callback: types.CallbackQuery, state: FSMContext):
-    try:
-        # Быстрый ответ для ускорения
-        await callback.answer("⏳ Обрабатываю...")
-    except Exception as callback_error:
-        if "query is too old" in str(callback_error) or "response timeout expired" in str(callback_error):
-            logging.warning(f"⚠️ Callback query устарел для find_track от пользователя {callback.from_user.id}")
-            return
-        else:
-            raise callback_error
-    
     user_id = str(callback.from_user.id)
     
     # Проверяем антиспам
     is_allowed, time_until = check_antispam(user_id)
     if not is_allowed:
-        try:
-            await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
-        except Exception:
-            pass  # Игнорируем ошибки callback answer
+        await callback.answer(f"⏳ Подождите {time_until:.1f} сек.", show_alert=True)
         return
     
     # Удаляем предыдущее сообщение для чистоты чата
@@ -4063,15 +4021,12 @@ async def search_soundcloud_artist(artist):
 @dp.callback_query(F.data == "for_you")
 async def for_you_section(callback: types.CallbackQuery):
     """Показывает рекомендуемые треки для пользователя"""
-    # Быстрый ответ для ускорения
-    await callback.answer("⏳ Обрабатываю...")
-    
     user_id = str(callback.from_user.id)
     
     # Проверяем антиспам
     is_allowed, time_until = check_antispam(user_id)
     if not is_allowed:
-        await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
+        await callback.answer(f"⏳ Подождите {time_until:.1f} сек.", show_alert=True)
         return
     
     try:
@@ -4564,26 +4519,12 @@ async def send_tracks_as_audio(user_id: str, tracks: list, status_msg: types.Mes
 @dp.callback_query(F.data == "my_music")
 async def my_music(callback: types.CallbackQuery):
     """Показывает треки пользователя в формате поиска - с кнопками для скачивания"""
-    try:
-        # Быстрый ответ для ускорения
-        await callback.answer("⏳ Обрабатываю...")
-    except Exception as callback_error:
-        if "query is too old" in str(callback_error) or "response timeout expired" in str(callback_error):
-            logging.warning(f"⚠️ Callback query устарел для my_music от пользователя {callback.from_user.id}")
-            return
-        else:
-            raise callback_error
-    
-    global user_tracks
     user_id = str(callback.from_user.id)
     
     # Проверяем антиспам
     is_allowed, time_until = check_antispam(user_id)
     if not is_allowed:
-        try:
-            await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
-        except Exception:
-            pass  # Игнорируем ошибки callback answer
+        await callback.answer(f"⏳ Подождите {time_until:.1f} сек.", show_alert=True)
         return
     
     # Получаем треки пользователя - загружаем заново каждый раз
@@ -4709,29 +4650,16 @@ async def my_music(callback: types.CallbackQuery):
 async def play_track(callback: types.CallbackQuery):
     """Скачивает и отправляет один трек по принципу 'Скачать всё'"""
     global user_tracks
+    user_id = str(callback.from_user.id)
+    logging.info(f"🔍 play_track вызван для пользователя: {user_id}")
+    
+    # Проверяем антиспам
+    is_allowed, time_until = check_antispam(user_id)
+    if not is_allowed:
+        await callback.answer(f"⏳ Подождите {time_until:.1f} сек.", show_alert=True)
+        return
+    
     try:
-        # Проверяем, не устарел ли callback query
-        try:
-            await callback.answer("⏳ Обрабатываю...", show_alert=False)
-        except Exception as callback_error:
-            if "query is too old" in str(callback_error) or "response timeout expired" in str(callback_error):
-                logging.warning(f"⚠️ Callback query устарел для пользователя {callback.from_user.id}")
-                return
-            else:
-                raise callback_error
-        
-        user_id = str(callback.from_user.id)
-        logging.info(f"🔍 play_track вызван для пользователя: {user_id}")
-        
-        # Проверяем антиспам
-        is_allowed, time_until = check_antispam(user_id)
-        if not is_allowed:
-            try:
-                await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
-            except Exception:
-                pass  # Игнорируем ошибки callback answer
-            return
-        
         # Извлекаем индекс трека
         idx = int(callback.data.split(":")[1])
         logging.info(f"🔍 Индекс трека: {idx}")
@@ -4742,17 +4670,11 @@ async def play_track(callback: types.CallbackQuery):
         
         tracks = user_tracks.get(user_id, [])
         if not tracks:
-            try:
-                await callback.answer("📂 У вас нет треков.", show_alert=True)
-            except Exception:
-                pass
+            await callback.answer("📂 У вас нет треков.", show_alert=True)
             return
         
         if not (0 <= idx < len(tracks)):
-            try:
-                await callback.answer("❌ Трек не найден.", show_alert=True)
-            except Exception:
-                pass
+            await callback.answer("❌ Трек не найден.", show_alert=True)
             return
         
         track = tracks[idx]
@@ -4765,21 +4687,11 @@ async def play_track(callback: types.CallbackQuery):
             original_url = track.get('original_url', '')
             
             if not original_url or not original_url.startswith('http'):
-                try:
-                    await callback.answer("❌ Ссылка для скачивания не найдена.", show_alert=True)
-                except Exception:
-                    pass
+                await callback.answer("❌ Ссылка для скачивания не найдена.", show_alert=True)
                 return
             
-            # Показываем уведомление о скачивании без изменения сообщения с плейлистом
-            try:
-                await callback.answer("⏳ Скачиваю трек...", show_alert=False)
-            except Exception as e:
-                if "query is too old" in str(e) or "response timeout expired" in str(e):
-                    logging.warning(f"⚠️ Callback query устарел при скачивании трека {title}")
-                    return
-                else:
-                    logging.warning(f"⚠️ Ошибка callback answer: {e}")
+            # Показываем уведомление о скачивании
+            await callback.answer("⏳ Скачиваю трек...", show_alert=False)
             
             try:
                 # Скачиваем трек заново (как в "Скачать всё")
@@ -4794,61 +4706,25 @@ async def play_track(callback: types.CallbackQuery):
                     await delete_temp_file(temp_file_path)
                     
                     # Показываем краткое уведомление о успешной отправке
-                    try:
-                        await callback.answer("✅ Трек отправлен!")
-                    except Exception as e:
-                        if "query is too old" in str(e) or "response timeout expired" in str(e):
-                            logging.warning(f"⚠️ Callback query устарел при уведомлении об успехе для трека {title}")
-                        else:
-                            logging.warning(f"⚠️ Ошибка callback answer при успехе: {e}")
+                    await callback.answer("✅ Трек отправлен!")
                 else:
-                    try:
-                        await callback.answer("❌ Не удалось скачать трек.")
-                    except Exception as e:
-                        if "query is too old" in str(e) or "response timeout expired" in str(e):
-                            logging.warning(f"⚠️ Callback query устарел при ошибке скачивания трека {title}")
-                        else:
-                            logging.warning(f"⚠️ Ошибка callback answer при ошибке: {e}")
+                    await callback.answer("❌ Не удалось скачать трек.")
                     
             except Exception as e:
                 logging.error(f"❌ Ошибка при скачивании/отправке трека {title}: {e}")
-                try:
-                    await callback.answer("❌ Ошибка при скачивании трека.")
-                except Exception as callback_error:
-                    if "query is too old" in str(callback_error) or "response timeout expired" in str(callback_error):
-                        logging.warning(f"⚠️ Callback query устарел при ошибке для трека {title}")
-                    else:
-                        logging.warning(f"⚠️ Ошибка callback answer при ошибке скачивания: {callback_error}")
+                await callback.answer("❌ Ошибка при скачивании трека.")
 
         else:
             # Старый формат: путь к файлу
             title = os.path.basename(track)
-            try:
-                await callback.answer("❌ Трек в старом формате. Добавьте его заново.", show_alert=True)
-            except Exception as e:
-                if "query is too old" in str(e) or "response timeout expired" in str(e):
-                    logging.warning(f"⚠️ Callback query устарел для старого формата трека {title}")
-                else:
-                    logging.warning(f"⚠️ Ошибка callback answer для старого формата: {e}")
+            await callback.answer("❌ Трек в старом формате. Добавьте его заново.", show_alert=True)
                 
     except ValueError as e:
         logging.error(f"❌ Ошибка парсинга индекса трека: {e}")
-        try:
-            await callback.answer("❌ Ошибка индекса трека.", show_alert=True)
-        except Exception as callback_error:
-            if "query is too old" in str(callback_error) or "response timeout expired" in str(callback_error):
-                logging.warning(f"⚠️ Callback query устарел при ошибке парсинга индекса")
-            else:
-                logging.warning(f"⚠️ Ошибка callback answer при ошибке парсинга: {callback_error}")
+        await callback.answer("❌ Ошибка индекса трека.", show_alert=True)
     except Exception as e:
         logging.error(f"❌ Критическая ошибка в play_track: {e}")
-        try:
-            await callback.answer("❌ Произошла ошибка. Попробуйте еще раз.", show_alert=True)
-        except Exception as callback_error:
-            if "query is too old" in str(callback_error) or "response timeout expired" in str(callback_error):
-                logging.warning(f"⚠️ Callback query устарел при критической ошибке")
-            else:
-                logging.warning(f"⚠️ Ошибка callback answer при критической ошибке: {callback_error}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте еще раз.", show_alert=True)
 
 
 
@@ -4856,137 +4732,117 @@ async def play_track(callback: types.CallbackQuery):
 @dp.callback_query(F.data == "download_all")
 async def download_all_tracks(callback: types.CallbackQuery):
     global user_tracks
-    try:
-        # Проверяем, не устарел ли callback query
+    user_id = str(callback.from_user.id)
+    
+    # Проверяем антиспам
+    is_allowed, time_until = check_antispam(user_id)
+    if not is_allowed:
+        await callback.answer(f"⏳ Подождите {time_until:.1f} сек.", show_alert=True)
+        return
+    
+    # Проверяем, что user_tracks не None
+    if user_tracks is None:
+        user_tracks = {}
+        logging.warning(f"⚠️ download_all_tracks: user_tracks был None для пользователя {user_id}, инициализируем пустым словарем")
+    
+    tracks = user_tracks.get(user_id, [])
+    
+    # Проверяем, что tracks не None и является списком
+    if tracks is None:
+        tracks = []
+        user_tracks[user_id] = tracks
+        logging.warning(f"⚠️ download_all_tracks: tracks был None для пользователя {user_id}, инициализируем пустым списком")
+    
+    if not tracks:
+        await callback.message.answer("📂 У тебя нет треков.", reply_markup=main_menu)
+        return
+    
+    # Отправляем сообщение о начале загрузки и сохраняем его ID
+    loading_msg = await callback.message.answer("📥 Отправляю все треки...")
+    
+    success_count = 0
+    failed_count = 0
+    
+    for track in tracks:
         try:
-            await callback.answer("⏳ Обрабатываю...", show_alert=False)
-        except Exception as callback_error:
-            if "query is too old" in str(callback_error) or "response timeout expired" in str(callback_error):
-                logging.warning(f"⚠️ Callback query устарел для download_all от пользователя {callback.from_user.id}")
-                return
-            else:
-                raise callback_error
-        
-        user_id = str(callback.from_user.id)
-        
-        # Проверяем антиспам
-        is_allowed, time_until = check_antispam(user_id)
-        if not is_allowed:
-            try:
-                await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
-            except Exception:
-                pass  # Игнорируем ошибки callback answer
-            return
-        
-        # Проверяем, что user_tracks не None
-        if user_tracks is None:
-            user_tracks = {}
-            logging.warning(f"⚠️ download_all_tracks: user_tracks был None для пользователя {user_id}, инициализируем пустым словарем")
-        
-        tracks = user_tracks.get(user_id, [])
-        
-        # Проверяем, что tracks не None и является списком
-        if tracks is None:
-            tracks = []
-            user_tracks[user_id] = tracks
-            logging.warning(f"⚠️ download_all_tracks: tracks был None для пользователя {user_id}, инициализируем пустым списком")
-        
-        if not tracks:
-            await callback.message.answer("📂 У тебя нет треков.", reply_markup=main_menu)
-            return
-        
-        # Отправляем сообщение о начале загрузки и сохраняем его ID
-        loading_msg = await callback.message.answer("📥 Отправляю все треки...")
-        
-        success_count = 0
-        failed_count = 0
-        
-
-        
-        for track in tracks:
-            try:
-                # Проверяем формат трека
-                if isinstance(track, dict):
-                    # Новый формат: объект с информацией о треке
-                    title = track.get('title', 'Неизвестный трек')
-                    original_url = track.get('original_url', '')
-                    
-                    if not original_url or not original_url.startswith('http'):
-                        logging.warning(f"⚠️ Нет валидной ссылки для трека: {title}")
-                        failed_count += 1
-                        continue
-                else:
-                    # Старый формат: путь к файлу
-                    if not track or not isinstance(track, str):
-                        logging.warning(f"⚠️ Некорректный формат трека: {track}")
-                        failed_count += 1
-                        continue
-                        
-                    title = os.path.basename(track)
-                    original_url = ""  # Для старых треков ссылка неизвестна
+            # Проверяем формат трека
+            if isinstance(track, dict):
+                # Новый формат: объект с информацией о треке
+                title = track.get('title', 'Неизвестный трек')
+                original_url = track.get('original_url', '')
                 
-                # Для всех треков (новых и старых) скачиваем заново
-                if original_url and original_url.startswith('http'):
-                    try:
-                        logging.info(f"📥 Скачиваю трек: {title} по ссылке: {original_url}")
-                        
-                        # Скачиваем трек во временную папку
-                        temp_file_path = await download_track_to_temp(user_id, original_url, title)
-                        
-                        if temp_file_path and os.path.exists(temp_file_path):
-                            # Отправляем MP3 пользователю
-                            try:
-                                await callback.message.answer_audio(types.FSInputFile(temp_file_path), title=title)
-                                success_count += 1
-                                logging.info(f"✅ Трек отправлен: {title}")
-                                
-                                # Удаляем временный файл после успешной отправки
-                                await delete_temp_file(temp_file_path)
-                                
-                                # Небольшая задержка между отправками
-                                await asyncio.sleep(0.4)
-                                
-                            except Exception as audio_error:
-                                logging.error(f"❌ Ошибка отправки трека {title}: {audio_error}")
-                                failed_count += 1
-                                
-                                # Удаляем временный файл даже при ошибке отправки
-                                await delete_temp_file(temp_file_path)
-                        else:
-                            logging.error(f"❌ Не удалось скачать трек: {title}")
+                if not original_url or not original_url.startswith('http'):
+                    logging.warning(f"⚠️ Нет валидной ссылки для трека: {title}")
+                    failed_count += 1
+                    continue
+            else:
+                # Старый формат: путь к файлу
+                if not track or not isinstance(track, str):
+                    logging.warning(f"⚠️ Некорректный формат трека: {track}")
+                    failed_count += 1
+                    continue
+                    
+                title = os.path.basename(track)
+                original_url = ""  # Для старых треков ссылка неизвестна
+            
+            # Для всех треков (новых и старых) скачиваем заново
+            if original_url and original_url.startswith('http'):
+                try:
+                    logging.info(f"📥 Скачиваю трек: {title} по ссылке: {original_url}")
+                    
+                    # Скачиваем трек во временную папку
+                    temp_file_path = await download_track_to_temp(user_id, original_url, title)
+                    
+                    if temp_file_path and os.path.exists(temp_file_path):
+                        # Отправляем MP3 пользователю
+                        try:
+                            await callback.message.answer_audio(types.FSInputFile(temp_file_path), title=title)
+                            success_count += 1
+                            logging.info(f"✅ Трек отправлен: {title}")
+                            
+                            # Удаляем временный файл после успешной отправки
+                            await delete_temp_file(temp_file_path)
+                            
+                            # Небольшая задержка между отправками
+                            await asyncio.sleep(0.4)
+                            
+                        except Exception as audio_error:
+                            logging.error(f"❌ Ошибка отправки трека {title}: {audio_error}")
                             failed_count += 1
                             
-                    except Exception as download_error:
-                        logging.error(f"❌ Ошибка при скачивании трека {title}: {download_error}")
+                            # Удаляем временный файл даже при ошибке отправки
+                            await delete_temp_file(temp_file_path)
+                    else:
+                        logging.error(f"❌ Не удалось скачать трек: {title}")
                         failed_count += 1
-                else:
-                    logging.warning(f"⚠️ Не удалось найти валидную ссылку для трека: {title}")
+                        
+                except Exception as download_error:
+                    logging.error(f"❌ Ошибка при скачивании трека {title}: {download_error}")
                     failed_count += 1
-                    
-            except Exception as e:
-                logging.exception(f"❌ Ошибка отправки трека {track}: {e}")
+            else:
+                logging.warning(f"⚠️ Не удалось найти валидную ссылку для трека: {title}")
                 failed_count += 1
+                
+        except Exception as e:
+            logging.exception(f"❌ Ошибка отправки трека {track}: {e}")
+            failed_count += 1
+    
+    # Удаляем надпись "📥 Отправляю все треки..." после завершения
+    try:
+        await loading_msg.delete()
+    except:
+        pass  # Игнорируем ошибки удаления
+    
+    # Отправляем итоговое сообщение только если есть ошибки
+    if failed_count > 0:
+        result_message = f"⚠️ **Внимание!**\n\n"
+        result_message += f"❌ **Не удалось отправить:** {failed_count} треков\n\n"
+        result_message += "💡 Возможные причины:\n"
+        result_message += "• Недоступны на YouTube\n"
+        result_message += "• Слишком большими для отправки\n"
+        result_message += "• Защищены авторскими правами\n"
         
-        # Удаляем надпись "📥 Отправляю все треки..." после завершения
-        try:
-            await loading_msg.delete()
-        except:
-            pass  # Игнорируем ошибки удаления
-        
-        # Отправляем итоговое сообщение только если есть ошибки
-        if failed_count > 0:
-            result_message = f"⚠️ **Внимание!**\n\n"
-            result_message += f"❌ **Не удалось отправить:** {failed_count} треков\n\n"
-            result_message += "💡 Возможные причины:\n"
-            result_message += "• Недоступны на YouTube\n"
-            result_message += "• Слишком большими для отправки\n"
-            result_message += "• Защищены авторскими правами\n"
-            
-            await callback.message.answer(result_message, parse_mode="Markdown")
-        
-    except Exception as e:
-        logging.error(f"❌ Критическая ошибка в download_all_tracks для пользователя {user_id}: {e}")
-        await callback.message.answer("❌ Произошла ошибка при скачивании всех треков.", reply_markup=main_menu)
+        await callback.message.answer(result_message, parse_mode="Markdown")
 
 
 
@@ -6199,9 +6055,6 @@ async def handle_genre_selection(callback: types.CallbackQuery):
 @dp.callback_query(F.data == "show_genres")
 async def show_genres_callback(callback: types.CallbackQuery):
     """Показывает список жанров через callback"""
-    # Быстрый ответ для ускорения
-    await callback.answer("⏳ Обрабатываю...")
-    
     user_id = str(callback.from_user.id)
     username = callback.from_user.username
     
@@ -6249,9 +6102,6 @@ async def show_genres_callback(callback: types.CallbackQuery):
 @dp.callback_query(F.data == "back_to_main")
 async def back_to_main_menu(callback: types.CallbackQuery):
     """Возвращает пользователя в главное меню из inline-меню"""
-    # Быстрый ответ для ускорения
-    await callback.answer("⏳ Обрабатываю...")
-    
     user_id = str(callback.from_user.id)
     
     try:
@@ -6277,9 +6127,6 @@ async def back_to_main_menu(callback: types.CallbackQuery):
 @dp.callback_query(F.data == "search_artist_again")
 async def search_artist_again_callback(callback: types.CallbackQuery, state: FSMContext):
     """Повторный поиск по исполнителю"""
-    # Быстрый ответ для ускорения
-    await callback.answer("⏳ Обрабатываю...")
-    
     user_id = str(callback.from_user.id)
     username = callback.from_user.username
     
