@@ -2114,6 +2114,9 @@ async def by_artist_section(callback: types.CallbackQuery, state: FSMContext):
     logging.info(f"🌨️ Пользователь {user_id} открыл раздел 'По исполнителям'")
     
     try:
+        # Удаляем предыдущее сообщение для чистоты чата
+        await callback.message.delete()
+        
         # Переходим в состояние ожидания ввода исполнителя
         await state.set_state(SearchStates.waiting_for_artist_search)
         
@@ -2141,9 +2144,15 @@ async def show_artist_search_menu(callback: types.CallbackQuery, state: FSMConte
     # Устанавливаем состояние ожидания ввода имени исполнителя
     await state.set_state(SearchStates.waiting_for_artist)
     
+    # Удаляем предыдущее сообщение для чистоты чата
+    try:
+        await callback.message.delete()
+    except:
+        pass  # Игнорируем ошибки удаления
+    
     # Отправляем изображение мишки с текстом о поиске по исполнителю
     try:
-        await callback.message.edit_media(
+        await callback.message.answer_photo(
             media=types.InputMediaPhoto(
                 media=types.FSInputFile("bear.png"),
                 caption="🐻‍❄️ **Поиск по исполнителям**\n\n"
@@ -2458,13 +2467,17 @@ async def ask_track_name(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer(f"⏳ Подождите {time_until:.1f} сек. перед следующим запросом", show_alert=True)
         return
     
+    # Удаляем предыдущее сообщение для чистоты чата
+    try:
+        await callback.message.delete()
+    except:
+        pass  # Игнорируем ошибки удаления
+    
     # Отправляем изображение мишки с запросом названия трека
     try:
-        await callback.message.edit_media(
-            media=types.InputMediaPhoto(
-                media=types.FSInputFile("bear.png"),
-                caption="🎵Введите название"
-            ),
+        await callback.message.answer_photo(
+            photo=types.FSInputFile("bear.png"),
+            caption="🎵Введите название",
             reply_markup=back_button
         )
     except Exception as e:
@@ -2487,12 +2500,17 @@ async def back_from_track_search_handler(callback: types.CallbackQuery, state: F
         return
     
     await state.clear()
+    
+    # Удаляем предыдущее сообщение для чистоты чата
+    try:
+        await callback.message.delete()
+    except:
+        pass  # Игнорируем ошибки удаления
+    
     # Отправляем изображение мишки без текста, только с меню
     try:
-        await callback.message.edit_media(
-            media=types.InputMediaPhoto(
-                media=types.FSInputFile("bear.png")
-            ),
+        await callback.message.answer_photo(
+            photo=types.FSInputFile("bear.png"),
             reply_markup=main_menu
         )
     except Exception as e:
@@ -3543,13 +3561,17 @@ async def for_you_section(callback: types.CallbackQuery):
         return
     
     try:
+        # Удаляем предыдущее сообщение для чистоты чата
+        try:
+            await callback.message.delete()
+        except:
+            pass  # Игнорируем ошибки удаления
+        
         # Отправляем сообщение "Пожалуйста, подождите..."
         try:
-            await callback.message.edit_media(
-                media=types.InputMediaPhoto(
-                    media=types.FSInputFile("bear.png"),
-                    caption="⏳ Пожалуйста, подождите.."
-                ),
+            await callback.message.answer_photo(
+                photo=types.FSInputFile("bear.png"),
+                caption="⏳ Пожалуйста, подождите..",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="⬅ Назад в главное меню", callback_data="back_to_main")]
                 ])
@@ -4049,6 +4071,13 @@ async def my_music(callback: types.CallbackQuery):
     if not tracks:
         # При пустом плейлисте отправляем новое сообщение без кнопок
         logging.info(f"🔍 my_music: плейлист пуст для пользователя {user_id}")
+        
+        # Удаляем предыдущее сообщение для чистоты чата
+        try:
+            await callback.message.delete()
+        except:
+            pass  # Игнорируем ошибки удаления
+        
         try:
             await callback.message.answer("📂 У вас нет треков.")
             logging.info(f"✅ my_music: сообщение о пустом плейлисте отправлено для пользователя {user_id}")
