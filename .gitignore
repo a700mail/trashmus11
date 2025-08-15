@@ -67,3 +67,5 @@ Thumbs.db
 # Render specific
 .render-buildlogs/
 
+"credentials.json" 
+"credentials.json" 
