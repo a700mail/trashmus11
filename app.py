@@ -63,19 +63,20 @@ def webhook():
         # Обрабатываем обновление через диспетчер бота
         if bot_thread and bot_running:
             try:
-                # Импортируем диспетчер и бота
-                from music_bot import dp, bot
+                # Импортируем функцию для обработки webhook обновлений
+                from music_bot import process_webhook_update
                 import asyncio
                 
-                # Создаем новый event loop для обработки
+                # Создаем новый event loop для вызова process_webhook_update
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 
-                # Обрабатываем обновление
-                loop.run_until_complete(dp.feed_webhook_update(bot, update))
+                # Передаем обновление в очередь бота
+                loop.run_until_complete(process_webhook_update(update))
                 loop.close()
                 
-                logger.info(f"Update {update.get('update_id', 'unknown')} processed successfully")
+                logger.info(f"Update {update.get('update_id', 'unknown')} queued for processing")
+                
             except Exception as e:
                 logger.error(f"Error processing update: {e}")
         else:

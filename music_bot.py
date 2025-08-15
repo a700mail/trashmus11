@@ -98,6 +98,11 @@ PAGE_SIZE = 10  # для постраничной навигации
 # === НАСТРОЙКИ ПРИОРИТЕТНОЙ ОЧЕРЕДИ ===
 PREMIUM_QUEUE = PriorityQueue()  # Приоритетная очередь для премиум пользователей
 REGULAR_QUEUE = deque()  # Обычная очередь для обычных пользователей
+
+# === НАСТРОЙКИ WEBHOOK ===
+# Глобальная переменная для хранения последнего webhook обновления
+last_webhook_update = None
+webhook_update_queue = asyncio.Queue()
 MAX_CONCURRENT_DOWNLOADS = 3  # Максимальное количество одновременных загрузок
 ACTIVE_DOWNLOADS = 0  # Счетчик активных загрузок
 
@@ -6017,6 +6022,10 @@ async def main_worker():
                     await bot.set_webhook(url=webhook_url)
                     logging.info("✅ Webhook установлен успешно")
                     
+                    # Запускаем обработчик webhook обновлений
+                    logging.info("🔄 Запускаем обработчик webhook обновлений")
+                    webhook_task = asyncio.create_task(webhook_update_processor())
+                    
                     # В Render используем только webhook, не запускаем polling
                     logging.info("✅ Webhook настроен, бот готов к работе")
                     
@@ -7020,6 +7029,55 @@ async def download_track_from_url_with_priority(user_id: str, url: str, is_premi
     except Exception as e:
         logging.exception(f"❌ Ошибка скачивания трека {url} для пользователя {user_id}: {e}")
         return None
+
+# === ФУНКЦИИ ДЛЯ WEBHOOK ===
+async def process_webhook_update(update_data: dict):
+    """Обрабатывает webhook обновление от Telegram"""
+    global last_webhook_update
+    
+    try:
+        logging.info(f"🔄 Обрабатываем webhook обновление: {update_data.get('update_id', 'unknown')}")
+        
+        # Сохраняем последнее обновление
+        last_webhook_update = update_data
+        
+        # Добавляем в очередь для обработки
+        await webhook_update_queue.put(update_data)
+        
+        logging.info(f"✅ Webhook обновление добавлено в очередь: {update_data.get('update_id', 'unknown')}")
+        return True
+        
+    except Exception as e:
+        logging.error(f"❌ Ошибка обработки webhook обновления: {e}")
+        return False
+
+async def webhook_update_processor():
+    """Обработчик webhook обновлений в фоновом режиме"""
+    logging.info("🔄 Запуск обработчика webhook обновлений")
+    
+    while True:
+        try:
+            # Ждем обновления из очереди
+            update_data = await webhook_update_queue.get()
+            
+            if update_data:
+                logging.info(f"🔄 Обрабатываем обновление из очереди: {update_data.get('update_id', 'unknown')}")
+                
+                # Обрабатываем обновление через диспетчер
+                try:
+                    await dp.feed_webhook_update(bot, update_data)
+                    logging.info(f"✅ Обновление {update_data.get('update_id', 'unknown')} обработано успешно")
+                except Exception as e:
+                    logging.error(f"❌ Ошибка обработки обновления через диспетчер: {e}")
+                
+                # Помечаем задачу как выполненную
+                webhook_update_queue.task_done()
+                
+        except Exception as e:
+            logging.error(f"❌ Ошибка в обработчике webhook обновлений: {e}")
+            await asyncio.sleep(1)
+        
+        await asyncio.sleep(0.1)  # Небольшая пауза между итерациями
 
 if __name__ == "__main__":
     # Проверяем, что мы в главном потоке
