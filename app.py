@@ -202,8 +202,8 @@ def keep_alive():
             except Exception as e:
                 logger.warning(f"⚠️ Health check не удался: {e}")
             
-            # Ждем 10 секунд до следующего keep alive
-            time.sleep(10)
+            # Ждем 25 секунд до следующего keep alive
+            time.sleep(25)
             
         except Exception as e:
             logger.error(f"❌ Ошибка в keep alive: {e}")
