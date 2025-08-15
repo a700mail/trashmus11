@@ -2139,11 +2139,13 @@ async def by_artist_section(callback: types.CallbackQuery, state: FSMContext):
         return
     
     try:
-        # Переходим в состояние ожидания ввода исполнителя
+        # Переходим в состояние ожидания ввода имени исполнителя
         await state.set_state(SearchStates.waiting_for_artist_search)
         
         # Отправляем сообщение с запросом имени исполнителя (без кнопки "Назад")
-        await callback.message.answer("🌨️ Введите исполнителя")
+        # Сохраняем ID сообщения для последующего удаления
+        msg = await callback.message.answer("🌨️ Введите исполнителя")
+        await state.update_data(prompt_message_id=msg.message_id)
         
     except Exception as e:
         await callback.answer("❌ Произошла ошибка. Попробуйте еще раз.", show_alert=True)
@@ -2550,11 +2552,13 @@ async def search_by_artist(message: types.Message, state: FSMContext):
     
     # Удаляем надпись "🌨️ Введите исполнителя" после запуска поиска
     try:
-        # Ищем и удаляем предыдущее сообщение с надписью
-        async for msg in message.bot.get_chat_history(message.chat.id, limit=10):
-            if msg.text == "🌨️ Введите исполнителя":
-                await msg.delete()
-                break
+        # Получаем ID сообщения с надписью из состояния
+        state_data = await state.get_data()
+        prompt_message_id = state_data.get('prompt_message_id')
+        
+        if prompt_message_id:
+            # Удаляем сообщение по ID
+            await message.bot.delete_message(message.chat.id, prompt_message_id)
     except:
         pass  # Игнорируем ошибки удаления
     
