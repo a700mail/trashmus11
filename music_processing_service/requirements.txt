@@ -1,0 +1,10 @@
+fastapi==0.104.1
+uvicorn==0.24.0
+python-dotenv==1.0.0
+yt-dlp==2023.11.16
+aiofiles==23.2.1
+python-multipart==0.0.6
+httpx==0.25.2
+asyncio-mqtt==0.16.1
+celery==5.3.4
+redis==5.0.1

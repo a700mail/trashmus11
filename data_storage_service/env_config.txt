@@ -1,0 +1,15 @@
+# Data Storage Service Configuration
+API_KEY=your_storage_service_api_key_here
+
+# Database Settings
+DATABASE_URL=sqlite:///./music_storage.db
+DATA_DIR=data
+
+# Service Settings
+HOST=0.0.0.0
+PORT=8002
+WORKERS=2
+
+# Cache Settings
+SEARCH_CACHE_TTL=1800
+TRACK_CACHE_TTL=3600

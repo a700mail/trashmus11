@@ -1,0 +1,14 @@
+# Core Bot Service Configuration
+BOT_TOKEN=your_telegram_bot_token_here
+
+# Music Processing Service API
+MUSIC_SERVICE_URL=http://localhost:8001
+MUSIC_SERVICE_API_KEY=your_music_service_api_key
+
+# Data Storage Service API
+STORAGE_SERVICE_URL=http://localhost:8002
+STORAGE_SERVICE_API_KEY=your_storage_service_api_key
+
+# Bot Settings
+MAX_FILE_SIZE_MB=50
+CACHE_DIR=cache

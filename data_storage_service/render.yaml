@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: data-storage-service
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: API_KEY
+        sync: false
+      - key: DATABASE_URL
+        value: sqlite:///./music_storage.db
+      - key: DATA_DIR
+        value: "data"
+      - key: HOST
+        value: "0.0.0.0"
+      - key: PORT
+        value: "8002"
+      - key: SEARCH_CACHE_TTL
+        value: "1800"
+      - key: TRACK_CACHE_TTL
+        value: "3600"
