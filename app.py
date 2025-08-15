@@ -59,24 +59,50 @@ def start_bot():
         return jsonify({"status": "already_running"})
     
     try:
-        # Импортируем и запускаем бота в отдельном потоке
+        print("🔄 Попытка запуска бота...")
+        
+        # Проверяем переменные окружения
+        bot_token = get_bot_token()
+        print(f"🔑 Токен бота: {'установлен' if bot_token else 'НЕ установлен'}")
+        
+        # Импортируем модуль
+        print("📦 Импортируем music_bot...")
         import music_bot
+        print("✅ music_bot импортирован успешно")
+        
+        # Проверяем наличие функции main
+        if not hasattr(music_bot, 'main'):
+            return jsonify({"status": "error", "message": "Функция main не найдена в music_bot"}), 500
+        
+        print("🔍 Функция main найдена")
+        
         import asyncio
         
         def run_bot():
             """Запускает асинхронную функцию main в event loop"""
             try:
+                print("🚀 Запускаем asyncio.run(music_bot.main())...")
                 asyncio.run(music_bot.main())
             except Exception as e:
-                print(f"Bot error: {e}")
+                print(f"❌ Ошибка в run_bot: {e}")
+                import traceback
+                print(f"📋 Traceback: {traceback.format_exc()}")
         
+        print("🧵 Создаем поток для бота...")
         bot_thread = threading.Thread(target=run_bot, daemon=True)
         bot_thread.start()
-        bot_running = True
+        print("✅ Поток бота запущен")
         
-        return jsonify({"status": "started"})
+        bot_running = True
+        print("🎉 Бот успешно запущен!")
+        
+        return jsonify({"status": "started", "message": "Bot started successfully"})
+        
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        print(f"❌ Критическая ошибка при запуске бота: {e}")
+        import traceback
+        print(f"📋 Traceback: {traceback.format_exc()}")
+        return jsonify({"status": "error", "message": str(e), "traceback": traceback.format_exc()}), 500
 
 @app.route('/stop_bot', methods=['POST', 'GET'])
 def stop_bot():
