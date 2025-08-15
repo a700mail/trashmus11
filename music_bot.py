@@ -15,13 +15,16 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeybo
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 
-# Импорт модуля YooMoney
-try:
-    from yoomoney_payment import create_simple_payment_url, verify_payment_by_label
-    YOOMONEY_AVAILABLE = True
-except ImportError:
-    YOOMONEY_AVAILABLE = False
-    logging.warning("⚠️ Модуль YooMoney не найден. Платежи через YooMoney будут недоступны.")
+# Импорт модуля YooMoney отключен
+# try:
+#     from yoomoney_payment import create_simple_payment_url, verify_payment_by_label
+#     YOOMONEY_AVAILABLE = True
+# except ImportError:
+#     YOOMONEY_AVAILABLE = False
+#     logging.warning("⚠️ Модуль YooMoney не найден. Платежи через YooMoney будут недоступны.")
+
+YOOMONEY_AVAILABLE = False
+logging.info("✅ Платежные системы отключены - бот работает в упрощенном режиме")
 
 import re
 from functools import partial
@@ -53,58 +56,32 @@ TRACKS_FILE = os.path.join(os.path.dirname(__file__), "tracks.json")
 SEARCH_CACHE_FILE = os.path.join(os.path.dirname(__file__), "search_cache.json")
 
 # === НАСТРОЙКИ ПЛАТЕЖЕЙ ===
-PAYMENT_PROVIDER_TOKEN = os.getenv("PAYMENT_PROVIDER_TOKEN")
-if not PAYMENT_PROVIDER_TOKEN:
-    raise RuntimeError("Переменная окружения PAYMENT_PROVIDER_TOKEN не установлена")
-
-PAYMENT_AMOUNT = 100  # 1 USD в центах (100 центов = 1 USD)
+# Платежные системы отключены
+PAYMENT_PROVIDER_TOKEN = None
+PAYMENT_AMOUNT = 0
 PAYMENT_CURRENCY = "USD"
-PAYMENT_TITLE = "Премиум доступ к Music Bot"
-PAYMENT_DESCRIPTION = "Месячная подписка на премиум функции - автоматическая активация (карты Ammer)"
+PAYMENT_TITLE = "Платежи отключены"
+PAYMENT_DESCRIPTION = "Платежные системы не поддерживаются"
 
 # === НАСТРОЙКИ YOOMONEY ===
-YOOMONEY_CLIENT_ID = os.getenv("YOOMONEY_CLIENT_ID")
-if not YOOMONEY_CLIENT_ID:
-    raise RuntimeError("Переменная окружения YOOMONEY_CLIENT_ID не установлена")
-
-YOOMONEY_CLIENT_SECRET = os.getenv("YOOMONEY_CLIENT_SECRET")
-if not YOOMONEY_CLIENT_SECRET:
-    raise RuntimeError("Переменная окружения YOOMONEY_CLIENT_SECRET не установлена")
-
-YOOMONEY_REDIRECT_URI = os.getenv("YOOMONEY_REDIRECT_URI")
-if not YOOMONEY_REDIRECT_URI:
-    raise RuntimeError("Переменная окружения YOOMONEY_REDIRECT_URI не установлена")
-
-YOOMONEY_ACCOUNT = os.getenv("YOOMONEY_ACCOUNT")
-if not YOOMONEY_ACCOUNT:
-    raise RuntimeError("Переменная окружения YOOMONEY_ACCOUNT не установлена")
-
-YOOMONEY_PAYMENT_AMOUNT = 100.0  # Сумма в рублях
-YOOMONEY_ENABLED = True  # Включить/выключить YooMoney
+# YooMoney отключен
+YOOMONEY_CLIENT_ID = None
+YOOMONEY_CLIENT_SECRET = None
+YOOMONEY_REDIRECT_URI = None
+YOOMONEY_ACCOUNT = None
+YOOMONEY_PAYMENT_AMOUNT = 0.0
+YOOMONEY_ENABLED = False
 
 # === НАСТРОЙКИ АВТОМАТИЧЕСКОЙ ОПЛАТЫ ===
-CARD_NUMBER = os.getenv("CARD_NUMBER")  # пример: XXXX XXXX XXXX XXXX
-if not CARD_NUMBER:
-    raise RuntimeError("Переменная окружения CARD_NUMBER не установлена")
-
-TON_WALLET = os.getenv("TON_WALLET")
-if not TON_WALLET:
-    raise RuntimeError("Переменная окружения TON_WALLET не установлена")
-
-PAYMENT_AMOUNT_USD = os.getenv("PAYMENT_AMOUNT_USD")
-if not PAYMENT_AMOUNT_USD:
-    raise RuntimeError("Переменная окружения PAYMENT_AMOUNT_USD не установлена")
-
-PAYMENT_AMOUNT_USDT = os.getenv("PAYMENT_AMOUNT_USDT")
-if not PAYMENT_AMOUNT_USDT:
-    raise RuntimeError("Переменная окружения PAYMENT_AMOUNT_USDT не установлена")
-
-TON_API_KEY = os.getenv("TON_API_KEY")
-if not TON_API_KEY:
-    raise RuntimeError("Переменная окружения TON_API_KEY не установлена")
+# Платежи отключены
+CARD_NUMBER = None
+TON_WALLET = None
+PAYMENT_AMOUNT_USD = "0.00"
+PAYMENT_AMOUNT_USDT = "0.00"
+TON_API_KEY = None
 
 # === НАСТРОЙКИ АВТОМАТИЧЕСКОЙ ОЧИСТКИ ===
-AUTO_CLEANUP_ENABLED = False  # Включить/выключить автоматическую очистку
+AUTO_CLEANUP_ENABLED = True  # Включить/выключить автоматическую очистку
 AUTO_CLEANUP_DELAY = 1.0  # Задержка в секундах перед удалением файла после отправки
 CLEANUP_LOGGING = True  # Логирование операций очистки
 
