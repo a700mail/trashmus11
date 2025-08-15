@@ -57,6 +57,9 @@ def webhook():
         # Логируем полученное обновление
         logger.info(f"Received webhook update: {update.get('update_id', 'unknown')}")
         
+        # Проверяем статус бота
+        logger.info(f"Bot status: bot_thread={bot_thread}, bot_running={bot_running}")
+        
         # Обрабатываем обновление через диспетчер бота
         if bot_thread and bot_running:
             try:
@@ -75,6 +78,16 @@ def webhook():
                 logger.info(f"Update {update.get('update_id', 'unknown')} processed successfully")
             except Exception as e:
                 logger.error(f"Error processing update: {e}")
+        else:
+            logger.warning(f"Bot not ready: bot_thread={bot_thread}, bot_running={bot_running}")
+            # Попробуем запустить бота автоматически
+            if not bot_running:
+                logger.info("Attempting to start bot automatically...")
+                try:
+                    start_bot()
+                    logger.info("Bot started automatically from webhook")
+                except Exception as e:
+                    logger.error(f"Failed to start bot automatically: {e}")
         
         return jsonify({"status": "ok"})
     except Exception as e:
@@ -83,21 +96,31 @@ def webhook():
 
 def run_bot_in_thread():
     """Запускает бота в отдельном потоке с правильной обработкой асинхронности"""
+    logger.info("🚀 Starting bot thread...")
     try:
         # Создаем новый event loop для этого потока
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        logger.info("✅ Event loop created for bot thread")
         
         # Импортируем и запускаем бота через main_worker (без polling)
+        logger.info("📥 Importing main_worker from music_bot...")
         from music_bot import main_worker
+        logger.info("✅ main_worker imported successfully")
+        
+        logger.info("🚀 Starting main_worker...")
         loop.run_until_complete(main_worker())
+        logger.info("✅ main_worker completed")
     except Exception as e:
-        logger.error(f"Bot thread error: {e}")
+        logger.error(f"❌ Bot thread error: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
     finally:
         try:
             loop.close()
-        except:
-            pass
+            logger.info("✅ Event loop closed")
+        except Exception as e:
+            logger.error(f"❌ Error closing event loop: {e}")
 
 @app.route('/start_bot', methods=['GET', 'POST'])
 def start_bot():
