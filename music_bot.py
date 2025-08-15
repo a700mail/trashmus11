@@ -2614,7 +2614,7 @@ async def search_music(message: types.Message, state: FSMContext):
                         
                         logging.info(f"🔍 YouTube: создаем YoutubeDL с опциями {ydl_opts}")
                         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                            search_query = f"ytsearch5:{q}"
+                            search_query = f"ytsearch10:{q}"  # Увеличили с 5 до 10 для лучшего качества
                             logging.info(f"🔍 YouTube: вызываем extract_info для '{search_query}'")
                             result = ydl.extract_info(search_query, download=False)
                             logging.info(f"🔍 YouTube: extract_info завершен, результат: {type(result)}")
@@ -2631,7 +2631,7 @@ async def search_music(message: types.Message, state: FSMContext):
                 
                 result = await asyncio.wait_for(
                     asyncio.to_thread(search_block, q),
-                    timeout=15.0  # Уменьшили таймаут
+                    timeout=12.0  # Еще уменьшили таймаут для ускорения
                 )
                 logging.info(f"🔍 YouTube: поиск завершен, результат: {type(result)}")
                 return result
@@ -2645,11 +2645,11 @@ async def search_music(message: types.Message, state: FSMContext):
         youtube_task = asyncio.create_task(search_youtube(query))
         soundcloud_task = asyncio.create_task(search_soundcloud(query))
         
-        # Ждем результаты от обеих платформ с таймаутом 20 секунд (уменьшили)
+        # Ждем результаты от обеих платформ с таймаутом 18 секунд (еще уменьшили)
         try:
             youtube_info, soundcloud_results = await asyncio.wait_for(
                 asyncio.gather(youtube_task, soundcloud_task, return_exceptions=True),
-                timeout=20.0
+                timeout=18.0
             )
             logging.info(f"🔍 Поиск завершен за {time.time() - start_time:.2f}с")
         except asyncio.TimeoutError:
@@ -2755,10 +2755,6 @@ async def search_music(message: types.Message, state: FSMContext):
         
         # Удаляем сообщение "Поиск.." перед отправкой результатов
         await search_msg.delete()
-        
-        # Показываем быстрый ответ пользователю
-        if final_results:
-            await message.answer(f"✅ Найдено {len(final_results)} результатов за {time.time() - start_time:.1f}с")
         
         logging.info(f"🔍 Поиск завершен для '{query}': найдено {len(final_results)} треков")
         set_cached_search(query, final_results)
@@ -3077,14 +3073,14 @@ async def send_search_results(chat_id, results):
             return
         
         # Фильтруем валидные результаты
-        # Начинаем с 20 результатов, если мало - берем больше
-        initial_batch = 20
-        max_batch = 50  # Максимальное количество для проверки
+        # Начинаем с 15 результатов, если мало - берем больше
+        initial_batch = 15
+        max_batch = 30  # Уменьшили максимальное количество для проверки
         
         valid_results = []
         
         # Пробуем найти достаточно треков, увеличивая количество проверяемых результатов
-        for batch_size in [initial_batch, 30, 40, max_batch]:
+        for batch_size in [initial_batch, 20, max_batch]:
             if batch_size > len(results):
                 batch_size = len(results)
             
