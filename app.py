@@ -54,10 +54,27 @@ def webhook():
         # Получаем обновление от Telegram
         update = request.get_json()
         
-        # Обрабатываем обновление в отдельном потоке
+        # Логируем полученное обновление
+        logger.info(f"Received webhook update: {update.get('update_id', 'unknown')}")
+        
+        # Обрабатываем обновление через диспетчер бота
         if bot_thread and bot_running:
-            # Здесь можно добавить обработку обновлений
-            logger.info(f"Received webhook update: {update.get('update_id', 'unknown')}")
+            try:
+                # Импортируем диспетчер и обрабатываем обновление
+                from music_bot import dp
+                import asyncio
+                
+                # Создаем новый event loop для обработки
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+                # Обрабатываем обновление
+                loop.run_until_complete(dp.feed_webhook_update(bot, update))
+                loop.close()
+                
+                logger.info(f"Update {update.get('update_id', 'unknown')} processed successfully")
+            except Exception as e:
+                logger.error(f"Error processing update: {e}")
         
         return jsonify({"status": "ok"})
     except Exception as e:

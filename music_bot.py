@@ -6017,20 +6017,22 @@ async def main_worker():
                     await bot.set_webhook(url=webhook_url)
                     logging.info("✅ Webhook установлен успешно")
                     
-                    # Запускаем webhook
-                    await dp.start_webhook(
-                        bot=bot,
-                        webhook_path="/webhook",
-                        host="0.0.0.0",
-                        port=int(os.environ.get('PORT', 10000))
-                    )
-                    logging.info("✅ Webhook запущен")
+                    # В Render используем только webhook, не запускаем polling
+                    logging.info("✅ Webhook настроен, бот готов к работе")
+                    
+                    # Держим поток живым для webhook
+                    while True:
+                        await asyncio.sleep(1)
                 else:
-                    logging.warning("⚠️ RENDER_EXTERNAL_URL не установлен, используем polling")
-                    await dp.start_polling(bot, skip_updates=True)
+                    logging.warning("⚠️ RENDER_EXTERNAL_URL не установлен, используем только webhook")
+                    # Держим поток живым для webhook
+                    while True:
+                        await asyncio.sleep(1)
             except Exception as e:
-                logging.error(f"❌ Ошибка запуска webhook: {e}, переключаемся на polling")
-                await dp.start_polling(bot, skip_updates=True)
+                logging.error(f"❌ Ошибка настройки webhook: {e}")
+                # В Render не используем polling, только webhook
+                while True:
+                    await asyncio.sleep(1)
         else:
             # Локальный запуск - используем polling
             logging.info("💻 Локальный запуск - используем polling")
