@@ -3,6 +3,7 @@ import logging
 from flask import Flask, request, jsonify
 import threading
 import time
+import asyncio
 
 # Настройка логирования
 logging.basicConfig(
@@ -28,8 +29,8 @@ def home():
             "health": "/health",
             "status": "/status",
             "bot_status": "/bot_status",
-            "start_bot": "/start_bot (POST)",
-            "stop_bot": "/stop_bot (POST)"
+            "start_bot": "/start_bot (GET/POST)",
+            "stop_bot": "/stop_bot (GET/POST)"
         }
     })
 
@@ -46,6 +47,24 @@ def status():
     """Алиас для /health для совместимости"""
     return health()
 
+def run_bot_in_thread():
+    """Запускает бота в отдельном потоке с правильной обработкой асинхронности"""
+    try:
+        # Создаем новый event loop для этого потока
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        # Импортируем и запускаем бота
+        from music_bot import main
+        loop.run_until_complete(main())
+    except Exception as e:
+        logger.error(f"Bot thread error: {e}")
+    finally:
+        try:
+            loop.close()
+        except:
+            pass
+
 @app.route('/start_bot', methods=['GET', 'POST'])
 def start_bot():
     global bot_thread, bot_running
@@ -54,9 +73,8 @@ def start_bot():
         return jsonify({"status": "already_running", "message": "Bot is already running"})
     
     try:
-        # Импортируем и запускаем бота в отдельном потоке
-        from music_bot import main
-        bot_thread = threading.Thread(target=main, daemon=True)
+        # Запускаем бота в отдельном потоке с правильной обработкой асинхронности
+        bot_thread = threading.Thread(target=run_bot_in_thread, daemon=True)
         bot_thread.start()
         bot_running = True
         
@@ -111,8 +129,7 @@ def method_not_allowed(error):
 if __name__ == '__main__':
     # Автоматически запускаем бота при старте приложения
     try:
-        from music_bot import main
-        bot_thread = threading.Thread(target=main, daemon=True)
+        bot_thread = threading.Thread(target=run_bot_in_thread, daemon=True)
         bot_thread.start()
         bot_running = True
         logger.info("Bot started automatically")
