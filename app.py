@@ -16,7 +16,13 @@ def home():
     return jsonify({
         "status": "Telegram Music Bot Service",
         "bot_status": "running" if bot_running else "stopped",
-        "message": "Service is active and responding"
+        "message": "Service is active and responding",
+        "features": [
+            "YouTube music download",
+            "SoundCloud support", 
+            "Payment processing",
+            "Premium features"
+        ]
     })
 
 @app.route('/ping')
@@ -81,7 +87,16 @@ def status():
     return jsonify({
         "service": "running",
         "bot": "running" if bot_running else "stopped",
-        "timestamp": time.time()
+        "timestamp": time.time(),
+        "environment": {
+            "bot_token_set": bool(os.getenv('BOT_TOKEN')),
+            "payment_token_set": bool(os.getenv('PAYMENT_PROVIDER_TOKEN')),
+            "yoomoney_configured": all([
+                os.getenv('YOOMONEY_CLIENT_ID'),
+                os.getenv('YOOMONEY_CLIENT_SECRET'),
+                os.getenv('YOOMONEY_ACCOUNT')
+            ])
+        }
     })
 
 if __name__ == '__main__':

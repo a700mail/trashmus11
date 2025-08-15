@@ -8,15 +8,27 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.16
-      - key: TELEGRAM_BOT_TOKEN
+      - key: BOT_TOKEN
         sync: false
-      - key: GOOGLE_DRIVE_CREDENTIALS
+      - key: PAYMENT_PROVIDER_TOKEN
         sync: false
-      - key: GOOGLE_DRIVE_TOKEN
+      - key: YOOMONEY_CLIENT_ID
         sync: false
-      - key: STRIPE_SECRET_KEY
+      - key: YOOMONEY_CLIENT_SECRET
         sync: false
-      - key: STRIPE_PUBLISHABLE_KEY
+      - key: YOOMONEY_ACCOUNT
+        sync: false
+      - key: YOOMONEY_REDIRECT_URI
+        sync: false
+      - key: CARD_NUMBER
+        sync: false
+      - key: TON_WALLET
+        sync: false
+      - key: TON_API_KEY
+        sync: false
+      - key: PAYMENT_AMOUNT_USD
+        sync: false
+      - key: PAYMENT_AMOUNT_USDT
         sync: false
       - key: WEBHOOK_URL
         sync: false
