@@ -1,5 +1,6 @@
 import os
 import logging
+import requests
 from flask import Flask, request, jsonify
 import threading
 import time
@@ -184,6 +185,30 @@ def method_not_allowed(error):
         "endpoint": request.endpoint
     }), 405
 
+def keep_alive():
+    """Keep alive функция для предотвращения засыпания Render"""
+    while True:
+        try:
+            # Логируем keep alive каждые 10 секунд
+            logger.info("💓 Keep alive heartbeat - бот активен")
+            
+            # Делаем запрос к собственному health endpoint
+            try:
+                response = requests.get("http://localhost:10000/health", timeout=5)
+                if response.status_code == 200:
+                    logger.info("✅ Health check успешен")
+                else:
+                    logger.warning(f"⚠️ Health check вернул статус: {response.status_code}")
+            except Exception as e:
+                logger.warning(f"⚠️ Health check не удался: {e}")
+            
+            # Ждем 10 секунд до следующего keep alive
+            time.sleep(10)
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка в keep alive: {e}")
+            time.sleep(10)
+
 if __name__ == '__main__':
     # Автоматически запускаем бота при старте приложения
     try:
@@ -193,6 +218,14 @@ if __name__ == '__main__':
         logger.info("Bot started automatically")
     except Exception as e:
         logger.error(f"Failed to start bot automatically: {e}")
+    
+    # Запускаем keep alive в отдельном потоке
+    try:
+        keep_alive_thread = threading.Thread(target=keep_alive, daemon=True)
+        keep_alive_thread.start()
+        logger.info("Keep alive started automatically")
+    except Exception as e:
+        logger.error(f"Failed to start keep alive automatically: {e}")
     
     # Запускаем Flask приложение
     port = int(os.environ.get('PORT', 10000))
