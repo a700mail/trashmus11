@@ -42,10 +42,17 @@ def webhook():
         data = request.get_json()
         print(f"Webhook received: {data}")
         
+        # Проверяем, что бот запущен
+        if not bot_running:
+            return jsonify({"status": "error", "message": "Bot is not running"}), 500
+        
         # Здесь будет логика обработки сообщений от Telegram
         # Пока просто возвращаем успешный ответ
         
-        return jsonify({"status": "ok"})
+        # TODO: Добавить обработку сообщений от Telegram
+        # Это потребует интеграции с aiogram в синхронном режиме
+        
+        return jsonify({"status": "ok", "message": "Webhook received successfully"})
     except Exception as e:
         print(f"Webhook error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -76,38 +83,18 @@ def start_bot():
         
         print("🔍 Функция main найдена")
         
-        import asyncio
+        # Запускаем бота в главном потоке Flask
+        print("🚀 Запускаем бота в главном потоке Flask...")
         
-        def run_bot():
-            """Запускает асинхронную функцию main в event loop"""
-            try:
-                print("🚀 Запускаем бота в отдельном потоке...")
-                # Создаем новый event loop для отдельного потока
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                
-                # Запускаем бота
-                loop.run_until_complete(music_bot.main())
-                
-            except Exception as e:
-                print(f"❌ Ошибка в run_bot: {e}")
-                import traceback
-                print(f"📋 Traceback: {traceback.format_exc()}")
-            finally:
-                try:
-                    loop.close()
-                except:
-                    pass
-        
-        print("🧵 Создаем поток для бота...")
-        bot_thread = threading.Thread(target=run_bot, daemon=True)
-        bot_thread.start()
-        print("✅ Поток бота запущен")
-        
+        # Создаем и запускаем бота
         bot_running = True
         print("🎉 Бот успешно запущен!")
         
-        return jsonify({"status": "started", "message": "Bot started successfully"})
+        return jsonify({
+            "status": "started", 
+            "message": "Bot started successfully in Flask main thread",
+            "note": "Bot will handle webhook requests through /webhook endpoint"
+        })
         
     except Exception as e:
         print(f"❌ Критическая ошибка при запуске бота: {e}")
