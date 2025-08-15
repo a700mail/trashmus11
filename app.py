@@ -61,7 +61,16 @@ def start_bot():
     try:
         # Импортируем и запускаем бота в отдельном потоке
         import music_bot
-        bot_thread = threading.Thread(target=music_bot.main, daemon=True)
+        import asyncio
+        
+        def run_bot():
+            """Запускает асинхронную функцию main в event loop"""
+            try:
+                asyncio.run(music_bot.main())
+            except Exception as e:
+                print(f"Bot error: {e}")
+        
+        bot_thread = threading.Thread(target=run_bot, daemon=True)
         bot_thread.start()
         bot_running = True
         
