@@ -72,28 +72,26 @@ def start_bot():
         bot_token = get_bot_token()
         print(f"🔑 Токен бота: {'установлен' if bot_token else 'НЕ установлен'}")
         
-        # Импортируем основной модуль бота
-        print("📦 Импортируем music_bot...")
-        import music_bot
-        print("✅ music_bot импортирован успешно")
+        # Запускаем web_service.py в отдельном процессе
+        print("🚀 Запускаем web_service.py...")
+        import subprocess
+        import sys
         
-        # Проверяем наличие функции main
-        if not hasattr(music_bot, 'main'):
-            return jsonify({"status": "error", "message": "Функция main не найдена в music_bot"}), 500
+        # Запускаем web_service.py в фоновом режиме
+        process = subprocess.Popen([
+            sys.executable, 'web_service.py'
+        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         
-        print("🔍 Функция main найдена")
-        
-        # Запускаем бота в главном потоке Flask
-        print("🚀 Запускаем бота в главном потоке Flask...")
-        
-        # Создаем и запускаем бота
+        # Сохраняем процесс для возможности остановки
+        bot_thread = process
         bot_running = True
-        print("🎉 Бот успешно запущен!")
+        
+        print("🎉 Бот успешно запущен в отдельном процессе!")
         
         return jsonify({
             "status": "started", 
-            "message": "Bot started successfully in Flask main thread",
-            "note": "Bot will handle webhook requests through /webhook endpoint"
+            "message": "Bot started successfully in separate process",
+            "process_id": process.pid
         })
         
     except Exception as e:
@@ -111,11 +109,15 @@ def stop_bot():
         return jsonify({"status": "not_running"})
     
     try:
-        # Останавливаем бота
-        bot_running = False
-        # Здесь можно добавить логику остановки бота
+        # Останавливаем процесс бота
+        if bot_thread and hasattr(bot_thread, 'terminate'):
+            bot_thread.terminate()
+            bot_thread.wait(timeout=5)  # Ждем завершения процесса
+            print("✅ Процесс бота остановлен")
         
-        return jsonify({"status": "stopped"})
+        bot_running = False
+        return jsonify({"status": "stopped", "message": "Bot process terminated"})
+        
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
