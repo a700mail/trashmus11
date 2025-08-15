@@ -2565,9 +2565,10 @@ async def search_by_artist(message: types.Message, state: FSMContext):
 async def search_music(message: types.Message, state: FSMContext):
     query = message.text.strip()
     user_id = str(message.from_user.id)
+    start_time = time.time()  # Добавляем отсчет времени
     await state.clear()
 
-    logging.info(f"🔍 === НАЧАЛО ПОИСКА === Поиск музыки для пользователя {user_id}: '{query}'")
+    logging.info(f"🔍 Поиск музыки для пользователя {user_id}: '{query}'")
 
     # Проверяем, что запрос не пустой
     if not query:
@@ -2580,13 +2581,13 @@ async def search_music(message: types.Message, state: FSMContext):
         asyncio.create_task(download_track_from_url(message.from_user.id, query))
         return await message.answer("✅ Трек добавлен в вашу коллекцию! Теперь вы можете скачать его в разделе «Моя музыка».", reply_markup=main_menu)
 
-    search_msg = await message.answer("🔍 Поиск..")
+            search_msg = await message.answer("🔍 Поиск...")
 
-    cached = get_cached_search(query)
-    if cached:
-        # Удаляем сообщение "Поиск.." если используем кэш
-        await search_msg.delete()
-        return await send_search_results(message.chat.id, cached)
+        cached = get_cached_search(query)
+        if cached:
+            # Удаляем сообщение "Поиск.." если используем кэш
+            await search_msg.delete()
+            return await send_search_results(message.chat.id, cached)
     try:
         # Выполняем поиск на YouTube и SoundCloud параллельно
         async def search_youtube(q):
@@ -2630,7 +2631,7 @@ async def search_music(message: types.Message, state: FSMContext):
                 
                 result = await asyncio.wait_for(
                     asyncio.to_thread(search_block, q),
-                    timeout=25.0
+                    timeout=15.0  # Уменьшили таймаут
                 )
                 logging.info(f"🔍 YouTube: поиск завершен, результат: {type(result)}")
                 return result
@@ -2644,13 +2645,13 @@ async def search_music(message: types.Message, state: FSMContext):
         youtube_task = asyncio.create_task(search_youtube(query))
         soundcloud_task = asyncio.create_task(search_soundcloud(query))
         
-        # Ждем результаты от обеих платформ с таймаутом 30 секунд
+        # Ждем результаты от обеих платформ с таймаутом 20 секунд (уменьшили)
         try:
             youtube_info, soundcloud_results = await asyncio.wait_for(
                 asyncio.gather(youtube_task, soundcloud_task, return_exceptions=True),
-                timeout=30.0
+                timeout=20.0
             )
-            logging.info(f"🔍 Поиск завершен в пределах таймаута")
+            logging.info(f"🔍 Поиск завершен за {time.time() - start_time:.2f}с")
         except asyncio.TimeoutError:
             logging.warning(f"⚠️ Таймаут поиска для запроса '{query}', отменяем задачи")
             youtube_task.cancel()
@@ -2755,19 +2756,13 @@ async def search_music(message: types.Message, state: FSMContext):
         # Удаляем сообщение "Поиск.." перед отправкой результатов
         await search_msg.delete()
         
-        logging.info(f"🔍 Поиск завершен для '{query}': найдено {len(final_results)} треков (YouTube: {len(youtube_results)}, SoundCloud: {len(soundcloud_processed)})")
-        logging.info(f"🔍 Первый результат: {final_results[0] if final_results else 'Нет результатов'}")
-        logging.info(f"🔍 Тип первого результата: {type(final_results[0]) if final_results else 'Нет результатов'}")
+        # Показываем быстрый ответ пользователю
         if final_results:
-            logging.info(f"🔍 Ключи первого результата: {list(final_results[0].keys())}")
-            logging.info(f"🔍 Длительность первого результата: {final_results[0].get('duration', 'Нет')}")
-        else:
-            logging.warning("🔍 Нет результатов для логирования")
-            
-        logging.info(f"🔍 === ПЕРЕДАЕМ В send_search_results === Количество: {len(final_results)}")
+            await message.answer(f"✅ Найдено {len(final_results)} результатов за {time.time() - start_time:.1f}с")
+        
+        logging.info(f"🔍 Поиск завершен для '{query}': найдено {len(final_results)} треков")
         set_cached_search(query, final_results)
         await send_search_results(message.chat.id, final_results)
-        logging.info(f"🔍 === ПОИСК ЗАВЕРШЕН УСПЕШНО ===")
         
     except asyncio.TimeoutError:
         logging.warning(f"⚠️ Общий таймаут поиска для пользователя {user_id}: {query}")
@@ -3086,25 +3081,18 @@ async def send_search_results(chat_id, results):
         initial_batch = 20
         max_batch = 50  # Максимальное количество для проверки
         
-        logging.info(f"🔍 send_search_results: начинаем фильтрацию {len(results[:initial_batch])} результатов для чата {chat_id}")
         valid_results = []
         
         # Пробуем найти достаточно треков, увеличивая количество проверяемых результатов
         for batch_size in [initial_batch, 30, 40, max_batch]:
             if batch_size > len(results):
                 batch_size = len(results)
-                
-            logging.info(f"🔍 send_search_results: проверяем batch размером {batch_size}")
             
             for video in results[:batch_size]:
                 if video and isinstance(video, dict):
                     # Проверяем длительность трека (должна быть больше 30 секунд и меньше 15 минут)
                     duration = video.get('duration', 0)
-                    if not duration or duration <= 30:
-                        logging.info(f"🔍 send_search_results: трек '{video.get('title', 'Без названия')}' пропущен - длительность {duration} сек (меньше 30 секунд)")
-                        continue
-                    if duration > 900:  # Больше 15 минут
-                        logging.info(f"🔍 send_search_results: трек '{video.get('title', 'Без названия')}' пропущен - длительность {duration} сек (больше 15 минут)")
+                    if not duration or duration <= 30 or duration > 900:
                         continue
                     
                     # Проверяем, является ли это результатом SoundCloud
@@ -3112,18 +3100,15 @@ async def send_search_results(chat_id, results):
                         # SoundCloud результат
                         if video.get('url') and video.get('title'):
                             valid_results.append(video)
-                            logging.info(f"🔍 send_search_results: SoundCloud трек '{video.get('title')}' добавлен (длительность: {duration} сек)")
                     elif video.get('id') and video.get('title'):
                         # YouTube результат
                         valid_results.append(video)
-                        logging.info(f"🔍 send_search_results: YouTube трек '{video.get('title')}' добавлен (длительность: {duration} сек)")
             
             # Если нашли достаточно треков, прекращаем поиск
             if len(valid_results) >= 5:
-                logging.info(f"🔍 send_search_results: найдено достаточно треков ({len(valid_results)}), прекращаем поиск")
                 break
         
-        logging.info(f"🔍 send_search_results: после фильтрации осталось {len(valid_results)} валидных треков")
+        logging.info(f"🔍 Найдено {len(valid_results)} валидных треков из {len(results)}")
         
         if not valid_results:
             logging.warning(f"🔍 send_search_results: после фильтрации по длительности не осталось валидных треков для чата {chat_id}")
@@ -3304,7 +3289,7 @@ async def search_soundcloud(query):
         # Выполняем поиск с таймаутом
         info = await asyncio.wait_for(
             asyncio.to_thread(search_block),
-            timeout=25.0
+            timeout=15.0  # Уменьшили таймаут
         )
             
         if info and 'entries' in info:
@@ -7036,15 +7021,12 @@ async def process_webhook_update(update_data: dict):
     global last_webhook_update
     
     try:
-        logging.info(f"🔄 Обрабатываем webhook обновление: {update_data.get('update_id', 'unknown')}")
-        
         # Сохраняем последнее обновление
         last_webhook_update = update_data
         
         # Добавляем в очередь для обработки
         await webhook_update_queue.put(update_data)
         
-        logging.info(f"✅ Webhook обновление добавлено в очередь: {update_data.get('update_id', 'unknown')}")
         return True
         
     except Exception as e:
@@ -7061,14 +7043,11 @@ async def webhook_update_processor():
             update_data = await webhook_update_queue.get()
             
             if update_data:
-                logging.info(f"🔄 Обрабатываем обновление из очереди: {update_data.get('update_id', 'unknown')}")
-                
                 # Обрабатываем обновление через диспетчер
                 try:
                     await dp.feed_webhook_update(bot, update_data)
-                    logging.info(f"✅ Обновление {update_data.get('update_id', 'unknown')} обработано успешно")
                 except Exception as e:
-                    logging.error(f"❌ Ошибка обработки обновления через диспетчер: {e}")
+                    logging.error(f"❌ Ошибка обработки обновления: {e}")
                 
                 # Помечаем задачу как выполненную
                 webhook_update_queue.task_done()
@@ -7077,7 +7056,7 @@ async def webhook_update_processor():
             logging.error(f"❌ Ошибка в обработчике webhook обновлений: {e}")
             await asyncio.sleep(1)
         
-        await asyncio.sleep(0.1)  # Небольшая пауза между итерациями
+        await asyncio.sleep(0.05)  # Уменьшили паузу для быстрой обработки
 
 if __name__ == "__main__":
     # Проверяем, что мы в главном потоке
