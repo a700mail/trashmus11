@@ -8,3 +8,5 @@ requests
 aiohttp
 python-dotenv
 flask
+mutagen
+Pillow
