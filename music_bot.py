@@ -31,7 +31,7 @@ from functools import partial
 import aiohttp
 from datetime import datetime, timedelta
 from collections import deque
-from asyncio import PriorityQueue
+
 from concurrent.futures import ThreadPoolExecutor
 
 # Загрузка переменных окружения
@@ -485,6 +485,22 @@ def load_json(path, default):
             if data is None:
                 logging.warning(f"⚠️ Файл {path} содержит None, используем значение по умолчанию")
                 return default
+            
+            # Логируем информацию о загруженных данных
+            if isinstance(data, dict):
+                logging.info(f"📂 Загружен JSON файл {path}: {len(data)} ключей")
+                if path.endswith('tracks.json'):
+                    total_tracks = sum(len(tracks) if isinstance(tracks, list) else 0 for tracks in data.values())
+                    logging.info(f"🎵 Всего треков в файле: {total_tracks}")
+                    # Детальное логирование для каждого пользователя
+                    for user_id, tracks in data.items():
+                        if isinstance(tracks, list):
+                            logging.info(f"👤 Пользователь {user_id}: {len(tracks)} треков")
+                        else:
+                            logging.warning(f"⚠️ Пользователь {user_id}: некорректный формат треков ({type(tracks)})")
+            elif isinstance(data, list):
+                logging.info(f"📂 Загружен JSON файл {path}: {len(data)} элементов")
+            
             return data
     except json.JSONDecodeError as e:
         logging.error(f"❌ Ошибка парсинга JSON в {path}: {e}")
@@ -564,13 +580,30 @@ def save_json(path, data):
         if dir_path:
             os.makedirs(dir_path, exist_ok=True)
         
+        # Логируем информацию о сохраняемых данных
+        if isinstance(data, dict):
+            logging.info(f"💾 Сохраняю JSON файл {path}: {len(data)} ключей")
+            if path.endswith('tracks.json'):
+                total_tracks = sum(len(tracks) if isinstance(tracks, list) else 0 for tracks in data.values())
+                logging.info(f"🎵 Всего треков для сохранения: {total_tracks}")
+        elif isinstance(data, list):
+            logging.info(f"💾 Сохраняю JSON файл {path}: {len(data)} элементов")
+        
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        logging.info(f"✅ Данные успешно сохранены в {path}")
-        return True
+        
+        # Проверяем, что файл действительно создался и имеет размер
+        if os.path.exists(path):
+            file_size = os.path.getsize(path)
+            logging.info(f"✅ Данные успешно сохранены в {path} (размер: {file_size} байт)")
+            return True
+        else:
+            logging.error(f"❌ Файл {path} не был создан после сохранения")
+            return False
         
     except Exception as e:
         logging.error(f"❌ Ошибка сохранения {path}: {e}")
+        logging.exception("Полный стек ошибки:")
         return False
 
 def is_premium_user(user_id: str, username: str = None) -> bool:
@@ -639,12 +672,35 @@ def save_tracks():
             logging.error(f"❌ save_tracks: user_tracks не является словарем: {type(user_tracks)}")
             return False
         
-        save_json(TRACKS_FILE, user_tracks)
-        logging.info("✅ Треки успешно сохранены")
-        return True
+        # Проверяем, что файл доступен для записи
+        tracks_dir = os.path.dirname(TRACKS_FILE)
+        if tracks_dir and not os.path.exists(tracks_dir):
+            os.makedirs(tracks_dir, exist_ok=True)
+            logging.info(f"📁 Создана директория для треков: {tracks_dir}")
+        
+        # Добавляем детальное логирование перед сохранением
+        logging.info(f"💾 Начинаю сохранение треков в {TRACKS_FILE}")
+        logging.info(f"📊 Всего пользователей для сохранения: {len(user_tracks)}")
+        
+        # Сохраняем с проверкой результата
+        save_result = save_json(TRACKS_FILE, user_tracks)
+        if save_result:
+            logging.info(f"✅ Треки успешно сохранены в {TRACKS_FILE}")
+            logging.info(f"📊 Всего пользователей: {len(user_tracks)}")
+            # Логируем количество треков для каждого пользователя
+            for uid, tracks in user_tracks.items():
+                if tracks:
+                    logging.info(f"👤 Пользователь {uid}: {len(tracks)} треков")
+                else:
+                    logging.info(f"👤 Пользователь {uid}: 0 треков")
+            return True
+        else:
+            logging.error(f"❌ save_json вернул False при сохранении треков")
+            return False
         
     except Exception as e:
         logging.error(f"❌ Ошибка сохранения треков: {e}")
+        logging.exception("Полный стек ошибки:")
         return False
 
 def cleanup_track_cache():
@@ -663,8 +719,8 @@ def cleanup_track_cache():
 
 # Функция preload_track_metadata удалена - больше не нужна
 
-async def add_to_download_queue_fast(user_id: str, url: str, is_premium: bool = False):
-    """Быстро добавляет трек в очередь загрузки и возвращает мгновенный ответ"""
+async def add_to_download_queue_fast(user_id: str, url: str):
+    """Быстро добавляет трек в плейлист пользователя и в очередь загрузки"""
     try:
         # Проверяем входные параметры
         if not user_id or not url:
@@ -675,25 +731,30 @@ async def add_to_download_queue_fast(user_id: str, url: str, is_premium: bool = 
             logging.error("❌ add_to_download_queue_fast: некорректные типы параметров")
             return False
         
-        # Создаем задачу
+        logging.info(f"📋 Начинаю добавление трека для пользователя {user_id}: URL={url}")
+        
+        # СРАЗУ сохраняем трек в плейлист пользователя
+        save_success = await download_track_from_url(user_id, url)
+        if not save_success:
+            logging.error(f"❌ Не удалось сохранить трек в плейлист для пользователя {user_id}")
+            return False
+        
+        logging.info(f"✅ Трек успешно добавлен в плейлист для пользователя {user_id}")
+        
+        # Создаем задачу для загрузки
         task_info = {
             'user_id': user_id,
             'url': url,
-            'is_premium': is_premium,
             'timestamp': time.time()
         }
         
-        if is_premium:
-            # Премиум пользователи идут в приоритетную очередь
-            await PREMIUM_QUEUE.put((0, task_info))  # Приоритет 0 (выше)
-            logging.info(f"💎 Задача добавлена в премиум очередь для пользователя {user_id}")
-        else:
-            # Обычные пользователи идут в обычную очередь
-            REGULAR_QUEUE.append(task_info)
-            logging.info(f"📱 Задача добавлена в обычную очередь для пользователя {user_id}")
+        # Добавляем в обычную очередь
+        REGULAR_QUEUE.append(task_info)
+        logging.info(f"📱 Задача добавлена в очередь для пользователя {user_id}")
         
-        # Запускаем обработчик очереди в фоне
+        # Запускаем обработчик очереди в фоне для загрузки файла
         asyncio.create_task(process_download_queue_fast())
+        logging.info(f"✅ Задача добавлена в очередь для пользователя {user_id}")
         return True
         
     except Exception as e:
@@ -701,40 +762,17 @@ async def add_to_download_queue_fast(user_id: str, url: str, is_premium: bool = 
         return False
 
 async def process_download_queue_fast():
-    """Обрабатывает очередь загрузок в фоне"""
+    """Обрабатывает очередь загрузок файлов в фоне (треки уже сохранены в плейлист)"""
     try:
-        # Сначала обрабатываем премиум очередь
-        if not PREMIUM_QUEUE.empty():
-            try:
-                priority, task_info = await PREMIUM_QUEUE.get()
-                
-                if not task_info or not isinstance(task_info, dict):
-                    logging.error("❌ process_download_queue_fast: некорректная задача в премиум очереди")
-                    return
-                    
-                user_id = task_info.get('user_id')
-                url = task_info.get('url')
-                
-                if not user_id or not url:
-                    logging.error("❌ process_download_queue_fast: отсутствуют обязательные параметры")
-                    return
-                    
-                logging.info(f"💎 Обрабатываю премиум задачу для пользователя {user_id}")
-                
-                # Запускаем загрузку метаданных в фоне
-                asyncio.create_task(download_track_from_url(user_id, url))
-                
-            except Exception as premium_error:
-                logging.error(f"❌ Ошибка обработки премиум задачи: {premium_error}")
-                return
+        logging.info("🔄 Начинаю обработку очереди загрузок файлов")
         
-        # Затем обрабатываем обычную очередь
+        # Обрабатываем обычную очередь
         if REGULAR_QUEUE:
             try:
                 task_info = REGULAR_QUEUE.popleft()
                 
                 if not task_info or not isinstance(task_info, dict):
-                    logging.error("❌ process_download_queue_fast: некорректная задача в обычной очереди")
+                    logging.error("❌ process_download_queue_fast: некорректная задача в очереди")
                     return
                     
                 user_id = task_info.get('user_id')
@@ -744,17 +782,25 @@ async def process_download_queue_fast():
                     logging.error("❌ process_download_queue_fast: отсутствуют обязательные параметры")
                     return
                     
-                logging.info(f"📱 Обрабатываю обычную задачу для пользователя {user_id}")
+                logging.info(f"📱 Обрабатываю загрузку файла для пользователя {user_id}")
                 
-                # Запускаем загрузку метаданных в фоне
-                asyncio.create_task(download_track_from_url(user_id, url))
+                # Трек уже сохранен в плейлист, теперь загружаем только файл
+                try:
+                    # Здесь можно добавить логику загрузки файла, если нужно
+                    # Пока просто логируем успех
+                    logging.info(f"📱 Файл для пользователя {user_id} будет загружен в фоне")
+                except Exception as e:
+                    logging.error(f"❌ Ошибка загрузки файла для пользователя {user_id}: {e}")
                 
-            except Exception as regular_error:
-                logging.error(f"❌ Ошибка обработки обычной задачи: {regular_error}")
+            except Exception as error:
+                logging.error(f"❌ Ошибка обработки задачи: {error}")
                 return
                 
     except Exception as e:
         logging.error(f"❌ Ошибка в process_download_queue_fast: {e}")
+        logging.exception("Полный стек ошибки:")
+    else:
+        logging.info("✅ Обработка очереди загрузок файлов завершена")
 
 # === Экспорт cookies (опционально) ===
 def export_cookies():
@@ -1486,102 +1532,170 @@ async def download_track_from_url(user_id, url):
             logging.error("❌ download_track_from_url: некорректные параметры")
             return None
         
+        # Убеждаемся, что user_id - строка
+        user_id = str(user_id)
+        logging.info(f"🎯 Начинаю сохранение метаданных трека для пользователя {user_id}: {url}")
+        
         # Проверяем кеш для метаданных трека
         cache_key = f"metadata_{hashlib.md5(url.encode()).hexdigest()}"
         cached_metadata = get_cached_metadata(cache_key)
         
         if cached_metadata:
             logging.info(f"🎯 Используем кешированные метаданные для {url}")
-            return cached_metadata
+            # Проверяем, не добавлен ли уже этот трек пользователю
+            if user_id in user_tracks and user_tracks[user_id]:
+                for track in user_tracks[user_id]:
+                    if track.get('original_url') == url:
+                        logging.info(f"✅ Трек уже добавлен пользователю {user_id}: {cached_metadata.get('title', 'Неизвестный трек')}")
+                        return True
             
-        # Проверяем, что user_tracks не None
-        if user_tracks is None:
-            logging.warning("⚠️ download_track_from_url: user_tracks был None, инициализируем")
-            user_tracks = {}
+            # Добавляем трек из кэша
+            if user_id not in user_tracks:
+                user_tracks[user_id] = []
+            elif user_tracks[user_id] is None:
+                user_tracks[user_id] = []
+                
+            user_tracks[user_id].append(cached_metadata)
+            logging.info(f"📝 Трек из кэша добавлен в список пользователя {user_id}: {cached_metadata.get('title', 'Неизвестный трек')}")
+            logging.info(f"📊 Всего треков у пользователя {user_id}: {len(user_tracks[user_id])}")
+            
+            save_success = save_tracks()
+            if save_success:
+                logging.info(f"✅ Метаданные трека из кэша успешно добавлены для пользователя {user_id}: {cached_metadata.get('title', 'Неизвестный трек')}")
+                return True
+            else:
+                logging.error(f"❌ Не удалось сохранить трек из кэша для пользователя {user_id}")
+                return False
         
         # Проверяем кэш метаданных
         if url in track_metadata_cache:
             logging.info(f"💾 Используем кэшированные метаданные для {url}")
             cached_info = track_metadata_cache[url]
             
+            # Проверяем, не добавлен ли уже этот трек пользователю
+            if user_id in user_tracks and user_tracks[user_id]:
+                for track in user_tracks[user_id]:
+                    if track.get('original_url') == url:
+                        logging.info(f"✅ Трек уже добавлен пользователю {user_id}: {cached_info.get('title', 'Неизвестный трек')}")
+                        return True
+            
             # Инициализируем список треков для пользователя, если его нет
-            if str(user_id) not in user_tracks:
-                user_tracks[str(user_id)] = []
-            elif user_tracks[str(user_id)] is None:
-                user_tracks[str(user_id)] = []
+            if user_id not in user_tracks:
+                user_tracks[user_id] = []
+            elif user_tracks[user_id] is None:
+                user_tracks[user_id] = []
                 
-            user_tracks[str(user_id)].append(cached_info)
-            save_tracks()
+            user_tracks[user_id].append(cached_info)
+            logging.info(f"📝 Трек из кэша добавлен в список пользователя {user_id}: {cached_info.get('title', 'Неизвестный трек')}")
+            logging.info(f"📊 Всего треков у пользователя {user_id}: {cached_info.get('title', 'Неизвестный трек')}")
             
-            logging.info(f"✅ Метаданные трека из кэша успешно добавлены для пользователя {user_id}: {cached_info.get('title', 'Неизвестный трек')}")
-            return True
-        else:
-            logging.info(f"💾 Сохраняю метаданные трека для пользователя {user_id}: {url}")
-        
-        # Получаем информацию о треке без скачивания
-        try:
-            ydl_opts = {
-                'format': 'bestaudio/best',
-                'quiet': True,
-                'no_warnings': True,
-                'ignoreerrors': True,
-                'extract_flat': True,  # Только метаданные, без скачивания
-                'timeout': 10,  # Уменьшаем таймаут для быстрого ответа
-                'retries': 1,   # Уменьшаем количество попыток
-                'nocheckcertificate': True,  # Пропускаем проверку сертификата для скорости
-            }
-            
-            # Проверяем cookies файл
-            if os.path.exists(COOKIES_FILE):
-                ydl_opts['cookiefile'] = COOKIES_FILE
-                logging.info(f"🍪 Используем cookies файл: {COOKIES_FILE}")
-            
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                
-                if not info:
-                    logging.error(f"❌ Не удалось получить информацию о треке: {url}")
-                    return None
-                
-                # Извлекаем метаданные
-                title = info.get('title', 'Неизвестный трек')
-                duration = info.get('duration', 0)
-                uploader = info.get('uploader', 'Неизвестный исполнитель')
-                
-                # Создаем запись с метаданными (без файла)
-                track_info = {
-                    "title": title,
-                    "url": "",  # Пустой URL - файл не загружен
-                    "original_url": url,  # Сохраняем оригинальную ссылку для скачивания
-                    "duration": duration,
-                    "uploader": uploader,
-                    "size_mb": 0,  # Размер неизвестен до скачивания
-                    "needs_migration": False,
-                    "downloaded": False  # Флаг, что файл не загружен
-                }
-                
-                # Сохраняем в кэш для будущего использования
-                track_metadata_cache[url] = track_info
-                
-                # Сохраняем в расширенный кеш
-                set_cached_metadata(cache_key, track_info)
-                
-                logging.info(f"💾 Метаданные сохранены в кэш для {url}")
-                
-                # Очищаем кэш, если он превышает максимальный размер
-                cleanup_track_cache()
-                
-                # Инициализируем список треков для пользователя, если его нет
-                if str(user_id) not in user_tracks:
-                    user_tracks[str(user_id)] = []
-                elif user_tracks[str(user_id)] is None:
-                    user_tracks[str(user_id)] = []
-                    
-                user_tracks[str(user_id)].append(track_info)
-                save_tracks()
-                
-                logging.info(f"✅ Метаданные трека успешно сохранены для пользователя {user_id}: {title}")
+            save_success = save_tracks()
+            if save_success:
+                logging.info(f"✅ Метаданные трека из кэша успешно добавлены для пользователя {user_id}: {cached_info.get('title', 'Неизвестный трек')}")
                 return True
+            else:
+                logging.error(f"❌ Не удалось сохранить трек из кэша для пользователя {user_id}")
+                return False
+        
+        logging.info(f"💾 Получаю метаданные трека для пользователя {user_id}: {url}")
+        
+        # Получаем информацию о треке без скачивания в отдельном потоке
+        try:
+            def extract_info_blocking():
+                try:
+                    ydl_opts = {
+                        'format': 'bestaudio/best',
+                        'quiet': True,
+                        'no_warnings': True,
+                        'ignoreerrors': True,
+                        'extract_flat': True,  # Только метаданные, без скачивания
+                        'timeout': 15,  # Увеличиваем таймаут для надежности
+                        'retries': 2,   # Увеличиваем количество попыток
+                        'nocheckcertificate': True,  # Пропускаем проверку сертификата для скорости
+                    }
+                    
+                    # Проверяем cookies файл
+                    if os.path.exists(COOKIES_FILE):
+                        ydl_opts['cookiefile'] = COOKIES_FILE
+                        logging.info(f"🍪 Используем cookies файл: {COOKIES_FILE}")
+                    
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        info = ydl.extract_info(url, download=False)
+                        
+                        if not info:
+                            logging.error(f"❌ Не удалось получить информацию о треке: {url}")
+                            return None
+                        
+                        # Извлекаем метаданные
+                        title = info.get('title', 'Неизвестный трек')
+                        duration = info.get('duration', 0)
+                        uploader = info.get('uploader', 'Неизвестный исполнитель')
+                        
+                        # Создаем запись с метаданными (без файла)
+                        track_info = {
+                            "title": title,
+                            "url": "",  # Пустой URL - файл не загружен
+                            "original_url": url,  # Сохраняем оригинальную ссылку для скачивания
+                            "duration": duration,
+                            "uploader": uploader,
+                            "size_mb": 0,  # Размер неизвестен до скачивания
+                            "needs_migration": False,
+                            "downloaded": False,  # Флаг, что файл не загружен
+                            "added_at": datetime.now().isoformat()  # Время добавления
+                        }
+                        
+                        return track_info
+                        
+                except Exception as e:
+                    logging.error(f"❌ Ошибка извлечения информации о треке: {e}")
+                    return None
+            
+            # Выполняем блокирующую операцию в отдельном потоке используя современный asyncio.to_thread
+            track_info = await asyncio.to_thread(extract_info_blocking)
+            
+            if not track_info:
+                logging.error(f"❌ Не удалось получить информацию о треке: {url}")
+                return None
+            
+            # Сохраняем в кэш для будущего использования
+            track_metadata_cache[url] = track_info
+            
+            # Сохраняем в расширенный кеш
+            set_cached_metadata(cache_key, track_info)
+            
+            logging.info(f"💾 Метаданные сохранены в кэш для {url}")
+            
+            # Очищаем кэш, если он превышает максимальный размер
+            cleanup_track_cache()
+            
+            # Проверяем, не добавлен ли уже этот трек пользователю
+            if user_id in user_tracks and user_tracks[user_id]:
+                for track in user_tracks[user_id]:
+                    if track.get('original_url') == url:
+                        logging.info(f"✅ Трек уже добавлен пользователю {user_id}: {track_info.get('title', 'Неизвестный трек')}")
+                        return True
+            
+            # Инициализируем список треков для пользователя, если его нет
+            if user_id not in user_tracks:
+                user_tracks[user_id] = []
+            elif user_tracks[user_id] is None:
+                user_tracks[user_id] = []
+                
+            # Добавляем трек в список пользователя
+            user_tracks[user_id].append(track_info)
+            logging.info(f"📝 Трек добавлен в список пользователя {user_id}: {track_info.get('title', 'Неизвестный трек')}")
+            logging.info(f"📊 Всего треков у пользователя {user_id}: {len(user_tracks[user_id])}")
+            
+            # Сохраняем в файл
+            logging.info(f"💾 Сохраняю треки в файл для пользователя {user_id}")
+            save_success = save_tracks()
+            if save_success:
+                logging.info(f"✅ Метаданные трека успешно сохранены для пользователя {user_id}: {track_info.get('title', 'Неизвестный трек')}")
+                logging.info(f"📊 Всего треков у пользователя {user_id}: {len(user_tracks[user_id])}")
+                return True
+            else:
+                logging.error(f"❌ Не удалось сохранить трек в файл для пользователя {user_id}")
+                return False
                 
         except Exception as info_error:
             logging.error(f"❌ Ошибка получения информации о треке: {info_error}")
@@ -2650,17 +2764,17 @@ async def download_track(callback: types.CallbackQuery):
             
         url = f"https://www.youtube.com/watch?v={video_id}"
         
-        # Проверяем премиум статус пользователя
-        is_premium = is_premium_user(user_id, callback.from_user.username)
-        
-        # Используем быструю систему очередей с user-specific семафором
-        success = await add_to_download_queue_fast(user_id, url, is_premium)
+        # Используем быструю систему очередей
+        logging.info(f"🎯 Пользователь {user_id} запросил добавление YouTube трека: {url}")
+        success = await add_to_download_queue_fast(user_id, url)
         
         if success:
             # Показываем мгновенный ответ
             await callback.answer("✅ Трек будет добавлен в плейлист!", show_alert=True)
+            logging.info(f"✅ YouTube трек успешно добавлен в очередь для пользователя {user_id}")
         else:
             await callback.answer("❌ Ошибка добавления трека", show_alert=True)
+            logging.error(f"❌ Не удалось добавить YouTube трек в очередь для пользователя {user_id}")
         
     except ValueError as e:
         await callback.answer("❌ Ошибка ID видео.", show_alert=True)
@@ -2691,17 +2805,17 @@ async def download_soundcloud_from_search(callback: types.CallbackQuery):
         import urllib.parse
         url = urllib.parse.unquote(encoded_url)
         
-        # Проверяем премиум статус пользователя
-        is_premium = is_premium_user(user_id, callback.from_user.username)
-        
-        # Используем быструю систему очередей с user-specific семафором
-        success = await add_to_download_queue_fast(user_id, url, is_premium)
+        # Используем быструю систему очередей
+        logging.info(f"🎯 Пользователь {user_id} запросил добавление SoundCloud трека: {url}")
+        success = await add_to_download_queue_fast(user_id, url)
         
         if success:
             # Показываем мгновенный ответ
             await callback.answer("✅ Трек будет добавлен в плейлист!", show_alert=True)
+            logging.info(f"✅ SoundCloud трек успешно добавлен в очередь для пользователя {user_id}")
         else:
             await callback.answer("❌ Ошибка добавления трека", show_alert=True)
+            logging.error(f"❌ Не удалось добавить SoundCloud трек в очередь для пользователя {user_id}")
         
     except Exception as e:
         await callback.answer("❌ Произошла ошибка при запуске загрузки.", show_alert=True)
@@ -3219,6 +3333,8 @@ async def my_music(callback: types.CallbackQuery):
     global user_tracks
     user_id = str(callback.from_user.id)
     
+    logging.info(f"🎵 Пользователь {user_id} запросил показ 'Моей музыки'")
+    
     # Проверяем антиспам
     is_allowed, time_until = check_antispam(user_id)
     if not is_allowed:
@@ -3233,7 +3349,7 @@ async def my_music(callback: types.CallbackQuery):
         logging.info(f"🎯 Используем кешированные треки для пользователя {user_id}")
         tracks = cached_tracks
     else:
-        # Получаем треки пользователя - загружаем заново каждый раз
+            # Получаем треки пользователя - загружаем заново каждый раз
         global user_tracks
         user_tracks = load_json(TRACKS_FILE, {})
         
@@ -3242,6 +3358,15 @@ async def my_music(callback: types.CallbackQuery):
             user_tracks = {}
         
         tracks = user_tracks.get(user_id, [])
+        
+        # Логируем информацию о загруженных треках
+        logging.info(f"📂 Загружены треки для пользователя {user_id}: {len(tracks) if tracks else 0} треков")
+        if tracks:
+            for i, track in enumerate(tracks[:3]):  # Логируем первые 3 трека
+                if isinstance(track, dict):
+                    logging.info(f"🎵 Трек {i+1}: {track.get('title', 'Без названия')} - {track.get('original_url', 'Без ссылки')}")
+                else:
+                    logging.info(f"🎵 Трек {i+1}: {track}")
         
         # Сохраняем в кеш
         if tracks:
@@ -3351,7 +3476,7 @@ async def my_music(callback: types.CallbackQuery):
             logging.error(f"❌ Не удалось отредактировать сообщение об ошибке: {edit_error}")
             await callback.message.answer("❌ Ошибка отображения треков. Попробуйте еще раз.", reply_markup=main_menu)
     
-    logging.info("🔍 === ФУНКЦИЯ my_music ЗАВЕРШЕНА ===")
+    logging.info(f"🔍 === ФУНКЦИЯ my_music ЗАВЕРШЕНА для пользователя {user_id} ===")
 
 # Удалена старая функция перелистывания страниц
 
