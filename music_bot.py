@@ -860,14 +860,8 @@ async def auto_cleanup_file(file_path: str, delay: float = None, is_collection_t
             logging.info(f"🧹 Автоматическая очистка отключена для файла: {file_path}")
         return False
     
-    # Проверяем премиум статус пользователя
+    # Премиум система отключена
     is_premium = False
-    if user_id:
-        try:
-            # Используем глобальную функцию проверки премиума
-            is_premium = is_premium_user(user_id)
-        except:
-            pass
     
     # НЕ удаляем файлы из коллекции пользователей ИЛИ файлы премиум пользователей
     if is_collection_track or is_premium:
@@ -1134,8 +1128,8 @@ async def auto_repair_damaged_file(file_path: str, user_id: str, original_url: s
         
         # Перезагружаем файл
         try:
-            # Проверяем премиум статус
-            is_premium = is_premium_user(user_id)
+            # Премиум система отключена
+            is_premium = False
             
             # Перезагружаем трек (используем глобальную функцию)
             # from music_bot import download_track_from_url_with_priority
@@ -3907,10 +3901,8 @@ async def search_artist_again_callback(callback: types.CallbackQuery, state: FSM
     user_id = str(callback.from_user.id)
     username = callback.from_user.username
     
-    # Проверяем премиум статус
-    if not is_premium_user(user_id, username):
-        await callback.answer("🔒 Доступ ограничен! Требуется премиум подписка.", show_alert=True)
-        return
+    # Премиум система отключена - доступ открыт для всех
+    pass
     
     try:
         await callback.message.edit_media(
@@ -3957,10 +3949,8 @@ async def search_artist_retry_callback(callback: types.CallbackQuery, state: FSM
     user_id = str(callback.from_user.id)
     username = callback.from_user.username
     
-    # Проверяем премиум статус
-    if not is_premium_user(user_id, username):
-        await callback.answer("🔒 Доступ ограничен! Требуется премиум подписка.", show_alert=True)
-        return
+    # Премиум система отключена - доступ открыт для всех
+    pass
     
     logging.info(f"🔄 Повторная попытка поиска по исполнителю для пользователя {user_id}: '{artist_name}'")
     
@@ -5340,33 +5330,18 @@ async def add_track_with_delay(user_id: str, url: str, delay_seconds: int = 10):
         logging.info(f"🔄 Начинаю фоновую загрузку трека для пользователя {user_id}")
         
         # 1. Загружаем метаданные трека (не блокирует UI)
-        track_metadata = await download_track_from_url(user_id, url)
+        # Функция download_track_from_url уже добавляет трек в user_tracks и возвращает True/False
+        success = await download_track_from_url(user_id, url)
         
-        if track_metadata:
+        if success:
             logging.info(f"✅ Метаданные загружены для пользователя {user_id}")
             
             # 2. Ждем указанную задержку
-            logging.info(f"⏱️ Ожидаю {delay_seconds} секунд перед добавлением в плейлист")
+            logging.info(f"⏱️ Ожидаю {delay_seconds} секунд перед завершением")
             await asyncio.sleep(delay_seconds)
             
-            # 3. Добавляем трек в плейлист пользователя
-            if user_id not in user_tracks:
-                user_tracks[user_id] = []
-            
-            # Проверяем, не добавлен ли уже трек
-            track_exists = any(track.get('url') == url for track in user_tracks[user_id])
-            
-            if not track_exists:
-                user_tracks[user_id].append(track_metadata)
-                
-                # Сохраняем в файл
-                save_success = save_tracks()
-                if save_success:
-                    logging.info(f"✅ Трек успешно добавлен в плейлист для пользователя {user_id}")
-                else:
-                    logging.error(f"❌ Ошибка сохранения трека в файл для пользователя {user_id}")
-            else:
-                logging.info(f"ℹ️ Трек уже существует в плейлисте пользователя {user_id}")
+            # 3. Трек уже добавлен в плейлист функцией download_track_from_url
+            logging.info(f"✅ Трек успешно добавлен в плейлист для пользователя {user_id}")
         else:
             logging.error(f"❌ Не удалось загрузить метаданные трека для пользователя {user_id}")
             
