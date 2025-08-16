@@ -264,6 +264,8 @@ def method_not_allowed(error):
 
 def keep_alive():
     """Улучшенная Keep alive функция для предотвращения засыпания Render"""
+    global bot_running, bot_thread
+    
     logger.info("🚀 Keep alive запущен")
     
     # Счетчики для мониторинга
@@ -313,12 +315,12 @@ def keep_alive():
                 logger.warning(f"⚠️ [{current_time}] Бот неактивен, попытка перезапуска")
                 try:
                     # Попытка перезапуска бота
-                    global bot_running
                     bot_running = False
                     time.sleep(2)
                     bot_thread_new = threading.Thread(target=run_bot_in_thread, daemon=True)
                     bot_thread_new.start()
                     bot_running = True
+                    bot_thread = bot_thread_new  # Обновляем глобальную переменную
                     logger.info(f"🔄 [{current_time}] Бот перезапущен")
                 except Exception as restart_error:
                     logger.error(f"❌ [{current_time}] Ошибка перезапуска бота: {restart_error}")
