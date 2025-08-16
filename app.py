@@ -5,6 +5,9 @@ from flask import Flask, request, jsonify
 import threading
 import time
 import asyncio
+import aiohttp
+import signal
+import sys
 
 # Настройка логирования
 logging.basicConfig(
@@ -15,9 +18,68 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Глобальная переменная для хранения потока бота
+# Глобальные переменные для управления потоками
 bot_thread = None
 bot_running = False
+keep_alive_thread = None
+shutdown_event = threading.Event()
+
+# Graceful shutdown handler
+def signal_handler(signum, frame):
+    """Обработчик сигналов для graceful shutdown"""
+    logger.info(f"📴 Получен сигнал {signum}, начинаю graceful shutdown...")
+    shutdown_event.set()
+    
+    # Останавливаем бота
+    global bot_running
+    bot_running = False
+    
+    # Ждем завершения потоков
+    if bot_thread and bot_thread.is_alive():
+        logger.info("⏳ Ожидаю завершения потока бота...")
+        bot_thread.join(timeout=10)
+    
+    if keep_alive_thread and keep_alive_thread.is_alive():
+        logger.info("⏳ Ожидаю завершения keep alive потока...")
+        keep_alive_thread.join(timeout=5)
+    
+    logger.info("✅ Graceful shutdown завершен")
+    sys.exit(0)
+
+# Регистрируем обработчики сигналов
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
+async def async_health_check():
+    """Асинхронная проверка здоровья бота"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get("http://localhost:10000/health", timeout=3) as response:
+                if response.status == 200:
+                    return True, response.status
+                else:
+                    return False, response.status
+    except Exception as e:
+        return False, str(e)
+
+async def async_external_ping():
+    """Асинхронный ping внешних сервисов"""
+    external_services = [
+        "https://httpbin.org/get",
+        "https://api.github.com",
+        "https://www.google.com"
+    ]
+    
+    async with aiohttp.ClientSession() as session:
+        for service in external_services:
+            try:
+                async with session.get(service, timeout=5) as response:
+                    if response.status in [200, 301, 302]:
+                        return True, service
+            except Exception:
+                continue
+    
+    return False, "no_services_available"
 
 @app.route('/')
 def home():
@@ -37,12 +99,15 @@ def home():
 
 @app.route('/health')
 def health():
-    """Улучшенный health endpoint с детальной информацией"""
+    """Улучшенный health endpoint для Render"""
     try:
         # Проверяем статус бота
         bot_alive = bot_running and bot_thread and bot_thread.is_alive()
         
-        # Проверяем доступность внешних сервисов
+        # Проверяем статус keep alive
+        keep_alive_alive = keep_alive_thread and keep_alive_thread.is_alive()
+        
+        # Проверяем доступность внешних сервисов (синхронно для Render)
         external_status = {}
         external_services = [
             "https://httpbin.org/get",
@@ -52,10 +117,12 @@ def health():
         
         for service in external_services:
             try:
+                start_time = time.time()
                 response = requests.get(service, timeout=3)
+                response_time = time.time() - start_time
                 external_status[service] = {
                     "status": "healthy",
-                    "response_time": response.elapsed.total_seconds(),
+                    "response_time": response_time,
                     "status_code": response.status_code
                 }
             except Exception as e:
@@ -64,13 +131,47 @@ def health():
                     "error": str(e)
                 }
         
+        # Общий статус системы
+        overall_status = "healthy"
+        if not bot_alive:
+            overall_status = "degraded"
+        if not keep_alive_alive:
+            overall_status = "degraded"
+        
+        # Проверяем количество здоровых внешних сервисов
+        healthy_services = sum(1 for s in external_status.values() if s.get("status") == "healthy")
+        if healthy_services == 0:
+            overall_status = "unhealthy"
+        
+        # Проверяем, что мы в Render
+        is_render = os.environ.get('RENDER', False)
+        render_info = {}
+        if is_render:
+            render_info = {
+                "service_id": os.environ.get('RENDER_SERVICE_ID'),
+                "service_url": os.environ.get('RENDER_EXTERNAL_URL'),
+                "environment": os.environ.get('RENDER_ENVIRONMENT', 'production')
+            }
+        
         return jsonify({
-            "status": "healthy",
+            "status": overall_status,
             "timestamp": time.time(),
             "bot_status": "running" if bot_alive else "stopped",
             "bot_thread_alive": bot_thread.is_alive() if bot_thread else False,
+            "keep_alive_status": "running" if keep_alive_alive else "stopped",
+            "keep_alive_thread_alive": keep_alive_thread.is_alive() if keep_alive_thread else False,
             "external_services": external_status,
+            "external_services_summary": {
+                "total": len(external_services),
+                "healthy": healthy_services,
+                "unhealthy": len(external_services) - healthy_services
+            },
             "uptime": time.time() - (getattr(app, '_start_time', time.time())),
+            "shutdown_requested": shutdown_event.is_set(),
+            "render": {
+                "is_render": is_render,
+                "info": render_info
+            },
             "memory_usage": "N/A"  # Можно добавить psutil для мониторинга памяти
         })
     except Exception as e:
@@ -117,6 +218,8 @@ def webhook():
                 
             except Exception as e:
                 logger.error(f"Error processing update: {e}")
+                # Если обработка не удалась, возвращаем ошибку
+                return jsonify({"status": "error", "message": f"Failed to process update: {str(e)}"}), 500
         else:
             logger.warning(f"Bot not ready: bot_thread={bot_thread}, bot_running={bot_running}")
             # Попробуем запустить бота автоматически
@@ -125,8 +228,28 @@ def webhook():
                 try:
                     start_bot()
                     logger.info("Bot started automatically from webhook")
+                    
+                    # Теперь попробуем обработать обновление
+                    try:
+                        from music_bot import process_webhook_update
+                        import asyncio
+                        
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        loop.run_until_complete(process_webhook_update(update))
+                        loop.close()
+                        
+                        logger.info(f"Update {update.get('update_id', 'unknown')} processed after auto-start")
+                        
+                    except Exception as process_error:
+                        logger.error(f"Failed to process update after auto-start: {process_error}")
+                        return jsonify({"status": "error", "message": f"Bot started but failed to process update: {str(process_error)}"}), 500
+                        
                 except Exception as e:
                     logger.error(f"Failed to start bot automatically: {e}")
+                    return jsonify({"status": "error", "message": f"Failed to start bot: {str(e)}"}), 500
+            else:
+                return jsonify({"status": "error", "message": "Bot is starting up, please retry"}), 503
         
         return jsonify({"status": "ok"})
     except Exception as e:
@@ -135,6 +258,8 @@ def webhook():
 
 def run_bot_in_thread():
     """Запускает бота в отдельном потоке с правильной обработкой асинхронности"""
+    global bot_running, shutdown_event
+    
     logger.info("🚀 Starting bot thread...")
     try:
         # Создаем новый event loop для этого потока
@@ -148,18 +273,59 @@ def run_bot_in_thread():
         logger.info("✅ main_worker imported successfully")
         
         logger.info("🚀 Starting main_worker...")
-        loop.run_until_complete(main_worker())
+        
+        # Запускаем main_worker с обработкой graceful shutdown
+        try:
+            loop.run_until_complete(main_worker())
+        except KeyboardInterrupt:
+            logger.info("📴 Получен сигнал прерывания в потоке бота")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в main_worker: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+        finally:
+            # Graceful shutdown для бота
+            if not shutdown_event.is_set():
+                logger.info("🔄 Перезапуск бота через 5 секунд...")
+                time.sleep(5)
+                if not shutdown_event.is_set():
+                    # Рекурсивно перезапускаем бота
+                    bot_thread_new = threading.Thread(target=run_bot_in_thread, daemon=True)
+                    bot_thread_new.start()
+                    bot_thread = bot_thread_new
+                    return
+        
         logger.info("✅ main_worker completed")
+        
     except Exception as e:
         logger.error(f"❌ Bot thread error: {e}")
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        # Попытка перезапуска при критических ошибках
+        if not shutdown_event.is_set():
+            logger.info("🔄 Попытка перезапуска бота через 10 секунд...")
+            time.sleep(10)
+            if not shutdown_event.is_set():
+                try:
+                    bot_thread_new = threading.Thread(target=run_bot_in_thread, daemon=True)
+                    bot_thread_new.start()
+                    bot_thread = bot_thread_new
+                    logger.info("✅ Бот перезапущен после критической ошибки")
+                except Exception as restart_error:
+                    logger.error(f"❌ Не удалось перезапустить бота: {restart_error}")
+                    bot_running = False
     finally:
         try:
-            loop.close()
-            logger.info("✅ Event loop closed")
+            if 'loop' in locals() and loop and not loop.is_closed():
+                loop.close()
+                logger.info("✅ Event loop closed")
         except Exception as e:
             logger.error(f"❌ Error closing event loop: {e}")
+        
+        # Помечаем бота как неактивного
+        bot_running = False
+        logger.info("📴 Бот помечен как неактивный")
 
 @app.route('/start_bot', methods=['GET', 'POST'])
 def start_bot():
@@ -222,22 +388,22 @@ def method_not_allowed(error):
         "endpoint": request.endpoint
     }), 405
 
-def keep_alive():
-    """Улучшенная Keep alive функция для предотвращения засыпания Render"""
-    global bot_running, bot_thread
+def render_keep_alive():
+    """Упрощенный keep alive для Render - только внешние пинги"""
+    global bot_running, bot_thread, shutdown_event
     
-    logger.info("🚀 Keep alive запущен")
+    logger.info("🚀 Render Keep Alive запущен")
     
     # Счетчики для мониторинга
     ping_count = 0
     error_count = 0
     
-    while True:
+    while not shutdown_event.is_set():
         try:
             ping_count += 1
             current_time = time.strftime("%H:%M:%S")
             
-            # 1. Внутренний health check
+            # 1. Простой health check
             try:
                 response = requests.get("http://localhost:10000/health", timeout=3)
                 if response.status_code == 200:
@@ -247,9 +413,8 @@ def keep_alive():
             except Exception as e:
                 logger.warning(f"⚠️ [{current_time}] Health check не удался: {e}")
             
-            # 2. Внешний ping для предотвращения засыпания
+            # 2. Внешний ping для Render (предотвращает засыпание)
             try:
-                # Пингуем внешние сервисы для активности
                 external_services = [
                     "https://httpbin.org/get",
                     "https://api.github.com",
@@ -261,9 +426,9 @@ def keep_alive():
                         response = requests.get(service, timeout=5)
                         if response.status_code in [200, 301, 302]:
                             logger.info(f"🌐 [{current_time}] Внешний ping успешен: {service}")
-                            break # Останавливаемся после первого успешного пинга
+                            break
                     except Exception:
-                        continue # Пробуем следующий сервис
+                        continue
                         
             except Exception as e:
                 logger.warning(f"⚠️ [{current_time}] Внешний ping не удался: {e}")
@@ -275,13 +440,16 @@ def keep_alive():
                 logger.warning(f"⚠️ [{current_time}] Бот неактивен, попытка перезапуска")
                 try:
                     # Попытка перезапуска бота
-                    bot_running = False # Сначала останавливаем флаг
-                    time.sleep(2) # Даем время на завершение
-                    bot_thread_new = threading.Thread(target=run_bot_in_thread, daemon=True)
-                    bot_thread_new.start()
-                    bot_running = True # Устанавливаем флаг обратно
-                    bot_thread = bot_thread_new # Обновляем глобальную переменную
-                    logger.info(f"🔄 [{current_time}] Бот перезапущен")
+                    bot_running = False
+                    time.sleep(2)
+                    
+                    if not shutdown_event.is_set():
+                        bot_thread_new = threading.Thread(target=run_bot_in_thread, daemon=True)
+                        bot_thread_new.start()
+                        bot_running = True
+                        bot_thread = bot_thread_new
+                        logger.info(f"🔄 [{current_time}] Бот перезапущен")
+                    
                 except Exception as restart_error:
                     logger.error(f"❌ [{current_time}] Ошибка перезапуска бота: {restart_error}")
             
@@ -290,8 +458,22 @@ def keep_alive():
                 logger.info(f"✅ [{current_time}] Сброс счетчика ошибок (было: {error_count})")
                 error_count = 0
             
-            # Ждем 25 секунд до следующего keep alive (более частые пинги)
-            time.sleep(25)
+            # 5. Проверяем сигнал shutdown
+            if shutdown_event.is_set():
+                logger.info("📴 Keep alive получил сигнал shutdown, завершаю работу")
+                break
+            
+            # 6. Ждем до следующего keep alive
+            # Для Render оптимально каждые 14 минут (840 секунд)
+            # Это предотвращает засыпание, но не перегружает сервис
+            sleep_time = 840  # 14 минут
+            logger.info(f"⏳ [{current_time}] Следующий keep alive через {sleep_time//60} минут")
+            
+            # Разбиваем ожидание на части для возможности быстрого завершения
+            for _ in range(sleep_time):
+                if shutdown_event.is_set():
+                    break
+                time.sleep(1)
             
         except Exception as e:
             error_count += 1
@@ -300,18 +482,26 @@ def keep_alive():
             
             # При накоплении ошибок увеличиваем интервал
             if error_count > 5:
-                logger.warning(f"⚠️ [{current_time}] Много ошибок, увеличиваю интервал до 60 сек")
-                time.sleep(60)
+                logger.warning(f"⚠️ [{current_time}] Много ошибок, увеличиваю интервал до 30 минут")
+                for _ in range(1800):  # 30 минут
+                    if shutdown_event.is_set():
+                        break
+                    time.sleep(1)
             else:
-                time.sleep(10)
+                for _ in range(300):  # 5 минут
+                    if shutdown_event.is_set():
+                        break
+                    time.sleep(1)
+    
+    logger.info("✅ Render Keep Alive завершен")
 
 if __name__ == '__main__':
     # Записываем время старта приложения
     app._start_time = time.time()
     logger.info(f"🚀 Приложение запущено в {time.strftime('%Y-%m-%d %H:%M:%S')}")
     
-    # Автоматически запускаем бота при старте приложения
     try:
+        # Автоматически запускаем бота при старте приложения
         bot_thread = threading.Thread(target=run_bot_in_thread, daemon=True)
         bot_thread.start()
         bot_running = True
@@ -321,13 +511,32 @@ if __name__ == '__main__':
     
     # Запускаем keep alive в отдельном потоке
     try:
-        keep_alive_thread = threading.Thread(target=keep_alive, daemon=True)
+        keep_alive_thread = threading.Thread(target=render_keep_alive, daemon=True)
         keep_alive_thread.start()
         logger.info("💓 Keep alive запущен автоматически")
     except Exception as e:
         logger.error(f"❌ Не удалось запустить keep alive автоматически: {e}")
     
-    # Запускаем Flask приложение
-    port = int(os.environ.get('PORT', 10000))
-    logger.info(f"🌐 Flask приложение запускается на порту {port}")
-    app.run(host='0.0.0.0', port=port, debug=False)
+    # Запускаем Flask приложение с улучшенными настройками
+    try:
+        logger.info("🌐 Запуск Flask приложения...")
+        # Используем host='0.0.0.0' для доступности извне
+        # Используем port из переменных окружения или 10000 по умолчанию
+        port = int(os.environ.get('PORT', 10000))
+        
+        app.run(
+            host='0.0.0.0',
+            port=port,
+            debug=False,  # Отключаем debug для production
+            use_reloader=False,  # Отключаем reloader для предотвращения дублирования
+            threaded=True  # Включаем многопоточность
+        )
+    except Exception as e:
+        logger.error(f"❌ Ошибка запуска Flask приложения: {e}")
+        # Если Flask не запустился, ждем завершения других потоков
+        shutdown_event.set()
+        if bot_thread and bot_thread.is_alive():
+            bot_thread.join(timeout=10)
+        if keep_alive_thread and keep_alive_thread.is_alive():
+            keep_alive_thread.join(timeout=5)
+        sys.exit(1)
