@@ -144,6 +144,7 @@ class StorageServiceClient:
     async def save_track(self, user_id: str, track_data: Dict[str, Any]) -> bool:
         """Сохранение трека пользователя"""
         try:
+            logging.info(f"Попытка сохранения трека для пользователя {user_id}: {track_data}")
             async with httpx.AsyncClient() as client:
                 response = await client.post(
                     f"{self.base_url}/tracks/{user_id}",
@@ -151,6 +152,7 @@ class StorageServiceClient:
                     headers=self.headers,
                     timeout=10.0
                 )
+                logging.info(f"Ответ от Storage Service: {response.status_code} - {response.text}")
                 return response.status_code == 200
         except Exception as e:
             logging.error(f"Ошибка сохранения трека: {e}")
@@ -572,7 +574,11 @@ async def download_selected_track(callback: types.CallbackQuery):
         }
         
         # Сохраняем в хранилище
-        if await storage_client.save_track(user_id, track_data):
+        logging.info(f"Попытка сохранения трека в Data Storage Service: {track_data}")
+        save_result = await storage_client.save_track(user_id, track_data)
+        logging.info(f"Результат сохранения: {save_result}")
+        
+        if save_result:
             await loading_msg.delete()
             await callback.message.answer(
                 f"✅ Трек '{selected_track.get('title', 'Без названия')}' загружен, отправлен и добавлен в вашу коллекцию!",
