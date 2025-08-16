@@ -44,6 +44,9 @@ dp = Dispatcher()
 # HTTP клиент для API
 http_client = httpx.AsyncClient(timeout=30.0)
 
+# Глобальное хранилище результатов поиска (в продакшене лучше использовать Redis)
+search_results_cache = {}
+
 # Состояния FSM
 class SearchStates(StatesGroup):
     waiting_for_search = State()
@@ -316,7 +319,19 @@ async def show_my_music(callback: types.CallbackQuery):
         if len(tracks) > 20:
             tracks_text += f"\n... и еще {len(tracks) - 20} треков"
         
-        await callback.message.answer(tracks_text, reply_markup=back_button, parse_mode="Markdown")
+        # Создаем клавиатуру с треками для повторного скачивания
+        keyboard = []
+        for i, track in enumerate(tracks[:20], 1):  # Показываем первые 20
+            title = track.get('title', 'Без названия')[:25]  # Ограничиваем длину
+            keyboard.append([InlineKeyboardButton(
+                text=f"{i}. {title}",
+                callback_data=f"redownload_{track.get('id', i)}"
+            )])
+        
+        keyboard.append([InlineKeyboardButton(text="⬅ Назад", callback_data="back_to_main")])
+        markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+        
+        await callback.message.answer(tracks_text, reply_markup=markup, parse_mode="Markdown")
         
     except Exception as e:
         logging.error(f"Ошибка показа музыки: {e}")
@@ -480,13 +495,16 @@ async def send_search_results(chat_id: int, results: List[Dict[str, Any]]):
         if not results:
             return
         
+        # Сохраняем результаты в кеш для этого чата
+        search_results_cache[chat_id] = results
+        
         # Создаем клавиатуру с результатами
         keyboard = []
         for i, result in enumerate(results[:10]):  # Максимум 10 результатов
             title = result.get('title', 'Без названия')[:30]  # Ограничиваем длину
             keyboard.append([InlineKeyboardButton(
                 text=f"{i+1}. {title}",
-                callback_data=f"download_{result.get('id', i)}"
+                callback_data=f"download_{i}"  # Используем индекс вместо id
             )])
         
         keyboard.append([InlineKeyboardButton(text="⬅ Назад", callback_data="back_to_main")])
@@ -509,17 +527,165 @@ async def download_selected_track(callback: types.CallbackQuery):
     await callback.answer("⏳ Загружаю...")
     
     try:
+        # Получаем индекс трека из callback_data
+        track_index = int(callback.data.split("_")[1])
+        user_id = str(callback.from_user.id)
+        chat_id = callback.message.chat.id
+        
+        # Получаем результаты поиска из кеша
+        if chat_id not in search_results_cache:
+            await callback.answer("❌ Результаты поиска устарели. Выполните поиск заново.", show_alert=True)
+            return
+        
+        results = search_results_cache[chat_id]
+        if track_index >= len(results):
+            await callback.answer("❌ Трек не найден.", show_alert=True)
+            return
+        
+        # Получаем информацию о выбранном треке
+        selected_track = results[track_index]
+        track_url = selected_track.get('url', '')
+        
+        if not track_url:
+            await callback.answer("❌ URL трека не найден.", show_alert=True)
+            return
+        
+        # Отправляем сообщение о начале загрузки
+        loading_msg = await callback.message.answer("⏳ Загружаю трек...")
+        
+        # Загружаем трек через Music Service
+        download_result = await music_client.download_track(track_url, user_id)
+        
+        if not download_result:
+            await loading_msg.delete()
+            await callback.answer("❌ Ошибка загрузки трека.", show_alert=True)
+            return
+        
+        # Сохраняем метаданные трека в Data Storage Service
+        track_data = {
+            "title": selected_track.get("title", "Без названия"),
+            "url": download_result.get("file_url", ""),
+            "original_url": track_url,
+            "duration": selected_track.get("duration", 0),
+            "uploader": selected_track.get("uploader", "Неизвестно"),
+            "size_mb": download_result.get("size_mb", 0)
+        }
+        
+        # Сохраняем в хранилище
+        if await storage_client.save_track(user_id, track_data):
+            await loading_msg.delete()
+            await callback.message.answer(
+                f"✅ Трек '{selected_track.get('title', 'Без названия')}' загружен, отправлен и добавлен в вашу коллекцию!",
+                reply_markup=main_menu
+            )
+        else:
+            await loading_msg.delete()
+            await callback.message.answer(
+                f"✅ Трек '{selected_track.get('title', 'Без названия')}' загружен и отправлен!",
+                reply_markup=main_menu
+            )
+        
+        # Отправляем файл пользователю
+        try:
+            file_path = download_result.get("file_path", "")
+            if file_path and os.path.exists(file_path):
+                await callback.message.answer_audio(
+                    types.FSInputFile(file_path),
+                    title=selected_track.get("title", "Без названия"),
+                    performer=selected_track.get("uploader", "Неизвестно"),
+                    duration=selected_track.get("duration", 0)
+                )
+            else:
+                # Если файл недоступен, отправляем ссылку
+                await callback.message.answer(
+                    f"📁 Файл: {download_result.get('file_url', 'Ссылка недоступна')}"
+                )
+        except Exception as audio_error:
+            logging.error(f"Ошибка отправки аудио: {audio_error}")
+            # Отправляем как документ или ссылку
+            await callback.message.answer(
+                f"📁 Файл загружен: {download_result.get('file_url', 'Ссылка недоступна')}"
+            )
+        
+    except Exception as e:
+        logging.error(f"Ошибка загрузки выбранного трека: {e}")
+        await callback.answer("❌ Ошибка загрузки. Попробуйте еще раз.", show_alert=True)
+
+# Обработчик повторного скачивания трека из "Моей музыки"
+@dp.callback_query(F.data.startswith("redownload_"))
+async def redownload_track_from_my_music(callback: types.CallbackQuery):
+    """Повторное скачивание трека из коллекции пользователя"""
+    await callback.answer("⏳ Загружаю...")
+    
+    try:
         # Получаем ID трека из callback_data
         track_id = callback.data.split("_")[1]
         user_id = str(callback.from_user.id)
         
-        # Здесь должна быть логика получения информации о треке
-        # и его загрузки через Music Service
+        # Получаем информацию о треке из Data Storage Service
+        tracks = await storage_client.get_user_tracks(user_id)
+        if not tracks:
+            await callback.answer("❌ Треки не найдены.", show_alert=True)
+            return
         
-        await callback.message.answer("✅ Трек добавлен в вашу коллекцию!", reply_markup=main_menu)
+        # Ищем трек по ID (пока используем индекс, в реальности нужен ID)
+        try:
+            track_index = int(track_id) - 1
+            if track_index < 0 or track_index >= len(tracks):
+                await callback.answer("❌ Трек не найден.", show_alert=True)
+                return
+            selected_track = tracks[track_index]
+        except ValueError:
+            await callback.answer("❌ Неверный ID трека.", show_alert=True)
+            return
+        
+        # Получаем оригинальную ссылку для повторного скачивания
+        original_url = selected_track.get('original_url', '')
+        if not original_url:
+            await callback.answer("❌ Оригинальная ссылка не найдена.", show_alert=True)
+            return
+        
+        # Отправляем сообщение о начале загрузки
+        loading_msg = await callback.message.answer("⏳ Загружаю трек...")
+        
+        # Загружаем трек через Music Service
+        download_result = await music_client.download_track(original_url, user_id)
+        
+        if not download_result:
+            await loading_msg.delete()
+            await callback.answer("❌ Ошибка загрузки трека.", show_alert=True)
+            return
+        
+        # Отправляем файл пользователю
+        try:
+            file_path = download_result.get("file_path", "")
+            if file_path and os.path.exists(file_path):
+                await callback.message.answer_audio(
+                    types.FSInputFile(file_path),
+                    title=selected_track.get("title", "Без названия"),
+                    performer=selected_track.get("uploader", "Неизвестно"),
+                    duration=selected_track.get("duration", 0)
+                )
+            else:
+                # Если файл недоступен, отправляем ссылку
+                await callback.message.answer(
+                    f"📁 Файл: {download_result.get('file_url', 'Ссылка недоступна')}"
+                )
+        except Exception as audio_error:
+            logging.error(f"Ошибка отправки аудио: {audio_error}")
+            # Отправляем как документ или ссылку
+            await callback.message.answer(
+                f"📁 Файл загружен: {download_result.get('file_url', 'Ссылка недоступна')}"
+            )
+        
+        await loading_msg.delete()
+        await callback.message.answer(
+            f"✅ Трек '{selected_track.get('title', 'Без названия')}' загружен и отправлен!",
+            reply_markup=main_menu
+        )
         
     except Exception as e:
-        logging.error(f"Ошибка загрузки выбранного трека: {e}")
+        logging.error(f"Ошибка повторного скачивания трека: {e}")
         await callback.answer("❌ Ошибка загрузки. Попробуйте еще раз.", show_alert=True)
 
 async def main():
