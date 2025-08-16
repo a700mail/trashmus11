@@ -2644,11 +2644,11 @@ async def download_track(callback: types.CallbackQuery):
             
         url = f"https://www.youtube.com/watch?v={video_id}"
         
-        # Показываем сообщение о сохранении на 5 секунд
-        await callback.answer("⏳ Трек сохраняется в плейлист...", show_alert=True)
+        # Показываем сообщение о сохранении на 7 секунд (без кнопки закрытия)
+        await callback.answer("⏳ Трек сохраняется в плейлист...", show_alert=False)
         
         # Запускаем фоновую загрузку метаданных и добавление в плейлист
-        asyncio.create_task(add_track_with_delay(user_id, url, 5))
+        asyncio.create_task(add_track_with_delay(user_id, url, 7))
         
         logging.info(f"🚀 Запущена фоновая загрузка трека для пользователя {user_id}")
         
@@ -2681,11 +2681,11 @@ async def download_soundcloud_from_search(callback: types.CallbackQuery):
         import urllib.parse
         url = urllib.parse.unquote(encoded_url)
         
-        # Показываем сообщение о сохранении на 5 секунд
-        await callback.answer("⏳ Трек сохраняется в плейлист...", show_alert=True)
+        # Показываем сообщение о сохранении на 7 секунд (без кнопки закрытия)
+        await callback.answer("⏳ Трек сохраняется в плейлист...", show_alert=False)
         
         # Запускаем фоновую загрузку метаданных и добавление в плейлист
-        asyncio.create_task(add_track_with_delay(user_id, url, 5))
+        asyncio.create_task(add_track_with_delay(user_id, url, 7))
         
         logging.info(f"🚀 Запущена фоновая загрузка SoundCloud трека для пользователя {user_id}")
         
