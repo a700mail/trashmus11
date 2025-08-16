@@ -31,7 +31,7 @@ from functools import partial
 import aiohttp
 from datetime import datetime, timedelta
 from collections import deque
-from asyncio import PriorityQueue
+
 from concurrent.futures import ThreadPoolExecutor
 
 # Загрузка переменных окружения
@@ -663,7 +663,7 @@ def cleanup_track_cache():
 
 # Функция preload_track_metadata удалена - больше не нужна
 
-async def add_to_download_queue_fast(user_id: str, url: str, is_premium: bool = False):
+async def add_to_download_queue_fast(user_id: str, url: str):
     """Быстро добавляет трек в очередь загрузки и возвращает мгновенный ответ"""
     try:
         # Проверяем входные параметры
@@ -679,18 +679,12 @@ async def add_to_download_queue_fast(user_id: str, url: str, is_premium: bool = 
         task_info = {
             'user_id': user_id,
             'url': url,
-            'is_premium': is_premium,
             'timestamp': time.time()
         }
         
-        if is_premium:
-            # Премиум пользователи идут в приоритетную очередь
-            await PREMIUM_QUEUE.put((0, task_info))  # Приоритет 0 (выше)
-            logging.info(f"💎 Задача добавлена в премиум очередь для пользователя {user_id}")
-        else:
-            # Обычные пользователи идут в обычную очередь
-            REGULAR_QUEUE.append(task_info)
-            logging.info(f"📱 Задача добавлена в обычную очередь для пользователя {user_id}")
+        # Все пользователи идут в обычную очередь
+        REGULAR_QUEUE.append(task_info)
+        logging.info(f"📱 Задача добавлена в обычную очередь для пользователя {user_id}")
         
         # Запускаем обработчик очереди в фоне
         asyncio.create_task(process_download_queue_fast())
@@ -703,32 +697,7 @@ async def add_to_download_queue_fast(user_id: str, url: str, is_premium: bool = 
 async def process_download_queue_fast():
     """Обрабатывает очередь загрузок в фоне"""
     try:
-        # Сначала обрабатываем премиум очередь
-        if not PREMIUM_QUEUE.empty():
-            try:
-                priority, task_info = await PREMIUM_QUEUE.get()
-                
-                if not task_info or not isinstance(task_info, dict):
-                    logging.error("❌ process_download_queue_fast: некорректная задача в премиум очереди")
-                    return
-                    
-                user_id = task_info.get('user_id')
-                url = task_info.get('url')
-                
-                if not user_id or not url:
-                    logging.error("❌ process_download_queue_fast: отсутствуют обязательные параметры")
-                    return
-                    
-                logging.info(f"💎 Обрабатываю премиум задачу для пользователя {user_id}")
-                
-                # Запускаем загрузку метаданных в фоне
-                asyncio.create_task(download_track_from_url(user_id, url))
-                
-            except Exception as premium_error:
-                logging.error(f"❌ Ошибка обработки премиум задачи: {premium_error}")
-                return
-        
-        # Затем обрабатываем обычную очередь
+        # Обрабатываем обычную очередь
         if REGULAR_QUEUE:
             try:
                 task_info = REGULAR_QUEUE.popleft()
@@ -2650,11 +2619,8 @@ async def download_track(callback: types.CallbackQuery):
             
         url = f"https://www.youtube.com/watch?v={video_id}"
         
-        # Проверяем премиум статус пользователя
-        is_premium = is_premium_user(user_id, callback.from_user.username)
-        
-        # Используем быструю систему очередей с user-specific семафором
-        success = await add_to_download_queue_fast(user_id, url, is_premium)
+        # Используем быструю систему очередей
+        success = await add_to_download_queue_fast(user_id, url)
         
         if success:
             # Показываем мгновенный ответ
@@ -2691,11 +2657,8 @@ async def download_soundcloud_from_search(callback: types.CallbackQuery):
         import urllib.parse
         url = urllib.parse.unquote(encoded_url)
         
-        # Проверяем премиум статус пользователя
-        is_premium = is_premium_user(user_id, callback.from_user.username)
-        
-        # Используем быструю систему очередей с user-specific семафором
-        success = await add_to_download_queue_fast(user_id, url, is_premium)
+        # Используем быструю систему очередей
+        success = await add_to_download_queue_fast(user_id, url)
         
         if success:
             # Показываем мгновенный ответ
