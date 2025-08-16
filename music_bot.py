@@ -2764,22 +2764,26 @@ async def download_track(callback: types.CallbackQuery):
             
         url = f"https://www.youtube.com/watch?v={video_id}"
         
-        # Используем быструю систему очередей
-        logging.info(f"🎯 Пользователь {user_id} запросил добавление YouTube трека: {url}")
-        success = await add_to_download_queue_fast(user_id, url)
+        # Сразу отвечаем на callback, чтобы избежать ошибки "query is too old"
+        await callback.answer("⏳ Обрабатываю запрос...", show_alert=False)
         
-        if success:
-            # Показываем мгновенный ответ
-            await callback.answer("✅ Трек будет добавлен в плейлист!", show_alert=True)
-            logging.info(f"✅ YouTube трек успешно добавлен в очередь для пользователя {user_id}")
-        else:
-            await callback.answer("❌ Ошибка добавления трека", show_alert=True)
-            logging.error(f"❌ Не удалось добавить YouTube трек в очередь для пользователя {user_id}")
+        # Используем быструю систему очередей в фоне
+        logging.info(f"🎯 Пользователь {user_id} запросил добавление YouTube трека: {url}")
+        
+        # Запускаем обработку в фоне, чтобы не блокировать callback
+        asyncio.create_task(process_track_async(user_id, url, "YouTube"))
         
     except ValueError as e:
-        await callback.answer("❌ Ошибка ID видео.", show_alert=True)
+        try:
+            await callback.answer("❌ Ошибка ID видео.", show_alert=True)
+        except Exception as answer_error:
+            logging.error(f"❌ Не удалось отправить ответ на callback: {answer_error}")
     except Exception as e:
-        await callback.answer("❌ Произошла ошибка при запуске загрузки.", show_alert=True)
+        logging.error(f"❌ Ошибка в download_track: {e}")
+        try:
+            await callback.answer("❌ Произошла ошибка при запуске загрузки.", show_alert=True)
+        except Exception as answer_error:
+            logging.error(f"❌ Не удалось отправить ответ на callback: {answer_error}")
 
 # === Callback: скачивание SoundCloud трека из поиска ===
 @dp.callback_query(F.data.startswith("dl_sc:"))
@@ -2805,22 +2809,39 @@ async def download_soundcloud_from_search(callback: types.CallbackQuery):
         import urllib.parse
         url = urllib.parse.unquote(encoded_url)
         
-        # Используем быструю систему очередей
+        # Сразу отвечаем на callback, чтобы избежать ошибки "query is too old"
+        await callback.answer("⏳ Обрабатываю запрос...", show_alert=False)
+        
+        # Используем быструю систему очередей в фоне
         logging.info(f"🎯 Пользователь {user_id} запросил добавление SoundCloud трека: {url}")
+        
+        # Запускаем обработку в фоне, чтобы не блокировать callback
+        asyncio.create_task(process_track_async(user_id, url, "SoundCloud"))
+        
+    except Exception as e:
+        logging.error(f"❌ Ошибка в download_soundcloud_from_search: {e}")
+        try:
+            await callback.answer("❌ Произошла ошибка при запуске загрузки.", show_alert=True)
+        except Exception as answer_error:
+            logging.error(f"❌ Не удалось отправить ответ на callback: {answer_error}")
+
+# Удалена старая функция build_tracks_keyboard
+
+async def process_track_async(user_id: str, url: str, source: str):
+    """Асинхронно обрабатывает трек в фоне после быстрого ответа на callback"""
+    try:
+        logging.info(f"🔄 Начинаю асинхронную обработку {source} трека для пользователя {user_id}")
+        
+        # Используем быструю систему очередей
         success = await add_to_download_queue_fast(user_id, url)
         
         if success:
-            # Показываем мгновенный ответ
-            await callback.answer("✅ Трек будет добавлен в плейлист!", show_alert=True)
-            logging.info(f"✅ SoundCloud трек успешно добавлен в очередь для пользователя {user_id}")
+            logging.info(f"✅ {source} трек успешно добавлен в плейлист для пользователя {user_id}")
         else:
-            await callback.answer("❌ Ошибка добавления трека", show_alert=True)
-            logging.error(f"❌ Не удалось добавить SoundCloud трек в очередь для пользователя {user_id}")
-        
+            logging.error(f"❌ Не удалось добавить {source} трек в плейлист для пользователя {user_id}")
+            
     except Exception as e:
-        await callback.answer("❌ Произошла ошибка при запуске загрузки.", show_alert=True)
-
-# Удалена старая функция build_tracks_keyboard
+        logging.error(f"❌ Ошибка асинхронной обработки {source} трека для пользователя {user_id}: {e}")
 
 async def search_youtube_artist_improved(artist):
     """Улучшенный поиск треков исполнителя на YouTube с фильтрацией по длительности и качеству"""
