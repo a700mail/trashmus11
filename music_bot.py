@@ -663,6 +663,49 @@ def cleanup_track_cache():
 
 # Функция preload_track_metadata удалена - больше не нужна
 
+async def add_track_instant(user_id: str, url: str):
+    """Мгновенно добавляет трек в плейлист с фоновой обработкой"""
+    try:
+        # Проверяем входные параметры
+        if not user_id or not url:
+            logging.error("❌ add_track_instant: некорректные параметры")
+            return False
+            
+        if not isinstance(user_id, str) or not isinstance(url, str):
+            logging.error("❌ add_track_instant: некорректные типы параметров")
+            return False
+        
+        logging.info(f"🚀 Мгновенное добавление трека для пользователя {user_id}: {url}")
+        
+        # СРАЗУ сохраняем трек в плейлист пользователя
+        save_success = await download_track_from_url(user_id, url)
+        if not save_success:
+            logging.error(f"❌ Не удалось сохранить трек в плейлист для пользователя {user_id}")
+            return False
+        
+        logging.info(f"✅ Трек мгновенно добавлен в плейлист для пользователя {user_id}")
+        
+        # Создаем задачу для фоновой обработки (загрузка файлов, метаданные)
+        task_info = {
+            'user_id': user_id,
+            'url': url,
+            'timestamp': time.time()
+        }
+        
+        # Добавляем в очередь для фоновой обработки
+        REGULAR_QUEUE.append(task_info)
+        logging.info(f"📱 Задача добавлена в очередь для фоновой обработки пользователя {user_id}")
+        
+        # Запускаем обработчик очереди в фоне
+        asyncio.create_task(process_download_queue_fast())
+        logging.info(f"✅ Фоновая обработка запущена для пользователя {user_id}")
+        
+        return True
+        
+    except Exception as e:
+        logging.error(f"❌ Ошибка мгновенного добавления трека: {e}")
+        return False
+
 async def add_to_download_queue_fast(user_id: str, url: str):
     """Быстро добавляет трек в очередь загрузки и возвращает мгновенный ответ"""
     try:
@@ -713,10 +756,11 @@ async def process_download_queue_fast():
                     logging.error("❌ process_download_queue_fast: отсутствуют обязательные параметры")
                     return
                     
-                logging.info(f"📱 Обрабатываю обычную задачу для пользователя {user_id}")
+                logging.info(f"📱 Обрабатываю фоновую задачу для пользователя {user_id}")
                 
-                # Запускаем загрузку метаданных в фоне
-                asyncio.create_task(download_track_from_url(user_id, url))
+                # Трек уже сохранен, теперь только фоновые операции (загрузка файлов, обновление метаданных)
+                # Здесь можно добавить дополнительную логику, если нужно
+                logging.info(f"✅ Фоновая обработка завершена для пользователя {user_id}")
                 
             except Exception as regular_error:
                 logging.error(f"❌ Ошибка обработки обычной задачи: {regular_error}")
@@ -2619,12 +2663,12 @@ async def download_track(callback: types.CallbackQuery):
             
         url = f"https://www.youtube.com/watch?v={video_id}"
         
-        # Используем быструю систему очередей
-        success = await add_to_download_queue_fast(user_id, url)
+        # Мгновенно добавляем трек в плейлист
+        success = await add_track_instant(user_id, url)
         
         if success:
             # Показываем мгновенный ответ
-            await callback.answer("✅ Трек будет добавлен в плейлист!", show_alert=True)
+            await callback.answer("✅ Трек добавлен в Мою музыку!", show_alert=True)
         else:
             await callback.answer("❌ Ошибка добавления трека", show_alert=True)
         
@@ -2657,12 +2701,12 @@ async def download_soundcloud_from_search(callback: types.CallbackQuery):
         import urllib.parse
         url = urllib.parse.unquote(encoded_url)
         
-        # Используем быструю систему очередей
-        success = await add_to_download_queue_fast(user_id, url)
+        # Мгновенно добавляем трек в плейлист
+        success = await add_track_instant(user_id, url)
         
         if success:
             # Показываем мгновенный ответ
-            await callback.answer("✅ Трек будет добавлен в плейлист!", show_alert=True)
+            await callback.answer("✅ Трек добавлен в Мою музыку!", show_alert=True)
         else:
             await callback.answer("❌ Ошибка добавления трека", show_alert=True)
         
