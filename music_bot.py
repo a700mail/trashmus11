@@ -677,34 +677,78 @@ async def add_track_instant(user_id: str, url: str):
         
         logging.info(f"🚀 Мгновенное добавление трека для пользователя {user_id}: {url}")
         
-        # СРАЗУ добавляем трек в плейлист (без ожидания загрузки)
-        # Создаем базовые метаданные для мгновенного сохранения
-        basic_metadata = {
-            'id': f"instant_{int(time.time())}",
-            'title': 'Трек добавлен',
-            'duration': 0,
-            'url': url,
-            'source': 'yt' if 'youtube.com' in url or 'youtu.be' in url else 'sc',
-            'timestamp': time.time()
-        }
-        
-        # Добавляем в user_tracks
-        if user_id not in user_tracks:
-            user_tracks[user_id] = []
-        
-        user_tracks[user_id].append(basic_metadata)
-        logging.info(f"📝 Трек мгновенно добавлен в список пользователя {user_id}")
-        
-        # Сохраняем в файл
-        save_success = save_tracks()
-        if save_success:
-            logging.info(f"✅ Трек мгновенно сохранен в файл для пользователя {user_id}")
-        else:
-            logging.error(f"❌ Ошибка сохранения трека в файл для пользователя {user_id}")
-        
-        # Упрощенная система - без фоновой обработки
-        # Трек уже сохранен с базовыми метаданными
-        logging.info(f"✅ Трек полностью обработан для пользователя {user_id}")
+        # Пытаемся получить реальные метаданные с таймаутом
+        try:
+            # Быстрая загрузка метаданных с таймаутом 3 секунды
+            metadata_task = asyncio.create_task(download_track_from_url(user_id, url))
+            
+            try:
+                # Ждем максимум 3 секунды
+                await asyncio.wait_for(metadata_task, timeout=3.0)
+                logging.info(f"✅ Метаданные загружены быстро для пользователя {user_id}")
+                return True
+                
+            except asyncio.TimeoutError:
+                # Если не успели за 3 секунды, отменяем задачу
+                metadata_task.cancel()
+                logging.info(f"⏱️ Таймаут загрузки метаданных для пользователя {user_id}, используем базовые")
+                
+                # Создаем базовые метаданные как fallback
+                basic_metadata = {
+                    'id': f"instant_{int(time.time())}",
+                    'title': 'Трек добавлен (обновить /update_metadata)',
+                    'duration': 0,
+                    'url': url,
+                    'source': 'yt' if 'youtube.com' in url or 'youtu.be' in url else 'sc',
+                    'timestamp': time.time(),
+                    'needs_update': True
+                }
+                
+                # Добавляем в user_tracks
+                if user_id not in user_tracks:
+                    user_tracks[user_id] = []
+                
+                user_tracks[user_id].append(basic_metadata)
+                logging.info(f"📝 Трек добавлен с базовыми метаданными для пользователя {user_id}")
+                
+                # Сохраняем в файл
+                save_success = save_tracks()
+                if save_success:
+                    logging.info(f"✅ Трек с базовыми метаданными сохранен для пользователя {user_id}")
+                else:
+                    logging.error(f"❌ Ошибка сохранения трека в файл для пользователя {user_id}")
+                
+                return True
+                
+        except Exception as e:
+            logging.error(f"❌ Ошибка загрузки метаданных для пользователя {user_id}: {e}")
+            
+            # Fallback - базовые метаданные
+            basic_metadata = {
+                'id': f"instant_{int(time.time())}",
+                'title': 'Трек добавлен (обновить /update_metadata)',
+                'duration': 0,
+                'url': url,
+                'source': 'yt' if 'youtube.com' in url or 'youtu.be' in url else 'sc',
+                'timestamp': time.time(),
+                'needs_update': True
+            }
+            
+            # Добавляем в user_tracks
+            if user_id not in user_tracks:
+                user_tracks[user_id] = []
+            
+            user_tracks[user_id].append(basic_metadata)
+            logging.info(f"📝 Трек добавлен с базовыми метаданными (fallback) для пользователя {user_id}")
+            
+            # Сохраняем в файл
+            save_success = save_tracks()
+            if save_success:
+                logging.info(f"✅ Трек с базовыми метаданными (fallback) сохранен для пользователя {user_id}")
+            else:
+                logging.error(f"❌ Ошибка сохранения трека в файл для пользователя {user_id}")
+            
+            return True
         
         return True
         
@@ -1745,7 +1789,7 @@ async def update_track_metadata(message: types.Message):
         
         for i, track in enumerate(user_tracks[user_id]):
             try:
-                if track.get('url') and track.get('title') == 'Трек добавлен':
+                if track.get('url') and (track.get('title') == 'Трек добавлен (обновить /update_metadata)' or track.get('needs_update')):
                     # Обновляем только треки с базовыми метаданными
                     logging.info(f"🔄 Обновляю метаданные трека {i+1}/{total_tracks} для пользователя {user_id}")
                     
@@ -1779,7 +1823,16 @@ async def update_single_track_metadata(user_id: str, track: dict, track_index: i
         # Обновляем метаданные
         updated_metadata = await download_track_from_url(user_id, url)
         if updated_metadata:
-            logging.info(f"✅ Метаданные трека {track_index+1} обновлены для пользователя {user_id}")
+            # Обновляем трек в списке пользователя
+            if user_id in user_tracks and track_index < len(user_tracks[user_id]):
+                # Удаляем старый трек и добавляем обновленный
+                old_track = user_tracks[user_id].pop(track_index)
+                logging.info(f"✅ Метаданные трека {track_index+1} обновлены для пользователя {user_id}")
+                
+                # Сохраняем обновленный список
+                save_tracks()
+            else:
+                logging.warning(f"⚠️ Трек {track_index+1} не найден в списке пользователя {user_id}")
         else:
             logging.warning(f"⚠️ Не удалось обновить метаданные трека {track_index+1} для пользователя {user_id}")
             
