@@ -30,7 +30,6 @@ def home():
             "health": "/health",
             "status": "/status",
             "bot_status": "/bot_status",
-            "keep_alive_manual": "/keep_alive_manual (GET/POST)",
             "start_bot": "/start_bot (GET/POST)",
             "stop_bot": "/stop_bot (GET/POST)"
         }
@@ -195,49 +194,11 @@ def stop_bot():
 
 @app.route('/bot_status')
 def bot_status():
-    """Детальный статус бота"""
     return jsonify({
         "bot_running": bot_running,
         "bot_thread_alive": bot_thread.is_alive() if bot_thread else False,
-        "timestamp": time.time(),
-        "uptime": time.time() - (getattr(app, '_start_time', time.time())),
-        "keep_alive_active": True
+        "timestamp": time.time()
     })
-
-@app.route('/keep_alive_manual', methods=['GET', 'POST'])
-def keep_alive_manual():
-    """Принудительный keep alive для внешних мониторингов"""
-    try:
-        current_time = time.strftime("%H:%M:%S")
-        logger.info(f"🔧 [{current_time}] Принудительный keep alive вызван")
-        
-        # Проверяем статус бота
-        bot_alive = bot_running and bot_thread and bot_thread.is_alive()
-        
-        # Делаем внешний ping
-        external_ping_success = False
-        try:
-            response = requests.get("https://httpbin.org/get", timeout=5)
-            if response.status_code == 200:
-                external_ping_success = True
-                logger.info(f"🌐 [{current_time}] Внешний ping успешен")
-        except Exception as e:
-            logger.warning(f"⚠️ [{current_time}] Внешний ping не удался: {e}")
-        
-        return jsonify({
-            "status": "keep_alive_triggered",
-            "timestamp": time.time(),
-            "bot_alive": bot_alive,
-            "external_ping_success": external_ping_success,
-            "message": f"Keep alive выполнен в {current_time}"
-        })
-    except Exception as e:
-        logger.error(f"❌ Ошибка в принудительном keep alive: {e}")
-        return jsonify({
-            "status": "error",
-            "error": str(e),
-            "timestamp": time.time()
-        }), 500
 
 @app.errorhandler(404)
 def not_found(error):
@@ -248,7 +209,6 @@ def not_found(error):
             "health": "/health", 
             "status": "/status",
             "bot_status": "/bot_status",
-            "keep_alive_manual": "/keep_alive_manual (GET/POST)",
             "start_bot": "/start_bot (GET/POST)",
             "stop_bot": "/stop_bot (GET/POST)"
         }
@@ -301,9 +261,9 @@ def keep_alive():
                         response = requests.get(service, timeout=5)
                         if response.status_code in [200, 301, 302]:
                             logger.info(f"🌐 [{current_time}] Внешний ping успешен: {service}")
-                            break
+                            break # Останавливаемся после первого успешного пинга
                     except Exception:
-                        continue
+                        continue # Пробуем следующий сервис
                         
             except Exception as e:
                 logger.warning(f"⚠️ [{current_time}] Внешний ping не удался: {e}")
@@ -315,12 +275,12 @@ def keep_alive():
                 logger.warning(f"⚠️ [{current_time}] Бот неактивен, попытка перезапуска")
                 try:
                     # Попытка перезапуска бота
-                    bot_running = False
-                    time.sleep(2)
+                    bot_running = False # Сначала останавливаем флаг
+                    time.sleep(2) # Даем время на завершение
                     bot_thread_new = threading.Thread(target=run_bot_in_thread, daemon=True)
                     bot_thread_new.start()
-                    bot_running = True
-                    bot_thread = bot_thread_new  # Обновляем глобальную переменную
+                    bot_running = True # Устанавливаем флаг обратно
+                    bot_thread = bot_thread_new # Обновляем глобальную переменную
                     logger.info(f"🔄 [{current_time}] Бот перезапущен")
                 except Exception as restart_error:
                     logger.error(f"❌ [{current_time}] Ошибка перезапуска бота: {restart_error}")

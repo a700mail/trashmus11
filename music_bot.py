@@ -31,7 +31,7 @@ from functools import partial
 import aiohttp
 from datetime import datetime, timedelta
 from collections import deque
-
+from asyncio import PriorityQueue
 from concurrent.futures import ThreadPoolExecutor
 
 # Загрузка переменных окружения
@@ -663,100 +663,7 @@ def cleanup_track_cache():
 
 # Функция preload_track_metadata удалена - больше не нужна
 
-async def add_track_instant(user_id: str, url: str):
-    """Мгновенно добавляет трек в плейлист (упрощенная версия для экономии CPU)"""
-    try:
-        # Проверяем входные параметры
-        if not user_id or not url:
-            logging.error("❌ add_track_instant: некорректные параметры")
-            return False
-            
-        if not isinstance(user_id, str) or not isinstance(url, str):
-            logging.error("❌ add_track_instant: некорректные типы параметров")
-            return False
-        
-        logging.info(f"🚀 Мгновенное добавление трека для пользователя {user_id}: {url}")
-        
-        # Пытаемся получить реальные метаданные с таймаутом
-        try:
-            # Быстрая загрузка метаданных с таймаутом 3 секунды
-            metadata_task = asyncio.create_task(download_track_from_url(user_id, url))
-            
-            try:
-                # Ждем максимум 3 секунды
-                await asyncio.wait_for(metadata_task, timeout=3.0)
-                logging.info(f"✅ Метаданные загружены быстро для пользователя {user_id}")
-                return True
-                
-            except asyncio.TimeoutError:
-                # Если не успели за 3 секунды, отменяем задачу
-                metadata_task.cancel()
-                logging.info(f"⏱️ Таймаут загрузки метаданных для пользователя {user_id}, используем базовые")
-                
-                # Создаем базовые метаданные как fallback
-                basic_metadata = {
-                    'id': f"instant_{int(time.time())}",
-                    'title': 'Трек добавлен (обновить /update_metadata)',
-                    'duration': 0,
-                    'url': url,
-                    'source': 'yt' if 'youtube.com' in url or 'youtu.be' in url else 'sc',
-                    'timestamp': time.time(),
-                    'needs_update': True
-                }
-                
-                # Добавляем в user_tracks
-                if user_id not in user_tracks:
-                    user_tracks[user_id] = []
-                
-                user_tracks[user_id].append(basic_metadata)
-                logging.info(f"📝 Трек добавлен с базовыми метаданными для пользователя {user_id}")
-                
-                # Сохраняем в файл
-                save_success = save_tracks()
-                if save_success:
-                    logging.info(f"✅ Трек с базовыми метаданными сохранен для пользователя {user_id}")
-                else:
-                    logging.error(f"❌ Ошибка сохранения трека в файл для пользователя {user_id}")
-                
-                return True
-                
-        except Exception as e:
-            logging.error(f"❌ Ошибка загрузки метаданных для пользователя {user_id}: {e}")
-            
-            # Fallback - базовые метаданные
-            basic_metadata = {
-                'id': f"instant_{int(time.time())}",
-                'title': 'Трек добавлен (обновить /update_metadata)',
-                'duration': 0,
-                'url': url,
-                'source': 'yt' if 'youtube.com' in url or 'youtu.be' in url else 'sc',
-                'timestamp': time.time(),
-                'needs_update': True
-            }
-            
-            # Добавляем в user_tracks
-            if user_id not in user_tracks:
-                user_tracks[user_id] = []
-            
-            user_tracks[user_id].append(basic_metadata)
-            logging.info(f"📝 Трек добавлен с базовыми метаданными (fallback) для пользователя {user_id}")
-            
-            # Сохраняем в файл
-            save_success = save_tracks()
-            if save_success:
-                logging.info(f"✅ Трек с базовыми метаданными (fallback) сохранен для пользователя {user_id}")
-            else:
-                logging.error(f"❌ Ошибка сохранения трека в файл для пользователя {user_id}")
-            
-            return True
-        
-        return True
-        
-    except Exception as e:
-        logging.error(f"❌ Ошибка мгновенного добавления трека: {e}")
-        return False
-
-async def add_to_download_queue_fast(user_id: str, url: str):
+async def add_to_download_queue_fast(user_id: str, url: str, is_premium: bool = False):
     """Быстро добавляет трек в очередь загрузки и возвращает мгновенный ответ"""
     try:
         # Проверяем входные параметры
@@ -772,12 +679,18 @@ async def add_to_download_queue_fast(user_id: str, url: str):
         task_info = {
             'user_id': user_id,
             'url': url,
+            'is_premium': is_premium,
             'timestamp': time.time()
         }
         
-        # Все пользователи идут в обычную очередь
-        REGULAR_QUEUE.append(task_info)
-        logging.info(f"📱 Задача добавлена в обычную очередь для пользователя {user_id}")
+        if is_premium:
+            # Премиум пользователи идут в приоритетную очередь
+            await PREMIUM_QUEUE.put((0, task_info))  # Приоритет 0 (выше)
+            logging.info(f"💎 Задача добавлена в премиум очередь для пользователя {user_id}")
+        else:
+            # Обычные пользователи идут в обычную очередь
+            REGULAR_QUEUE.append(task_info)
+            logging.info(f"📱 Задача добавлена в обычную очередь для пользователя {user_id}")
         
         # Запускаем обработчик очереди в фоне
         asyncio.create_task(process_download_queue_fast())
@@ -790,7 +703,32 @@ async def add_to_download_queue_fast(user_id: str, url: str):
 async def process_download_queue_fast():
     """Обрабатывает очередь загрузок в фоне"""
     try:
-        # Обрабатываем обычную очередь
+        # Сначала обрабатываем премиум очередь
+        if not PREMIUM_QUEUE.empty():
+            try:
+                priority, task_info = await PREMIUM_QUEUE.get()
+                
+                if not task_info or not isinstance(task_info, dict):
+                    logging.error("❌ process_download_queue_fast: некорректная задача в премиум очереди")
+                    return
+                    
+                user_id = task_info.get('user_id')
+                url = task_info.get('url')
+                
+                if not user_id or not url:
+                    logging.error("❌ process_download_queue_fast: отсутствуют обязательные параметры")
+                    return
+                    
+                logging.info(f"💎 Обрабатываю премиум задачу для пользователя {user_id}")
+                
+                # Запускаем загрузку метаданных в фоне
+                asyncio.create_task(download_track_from_url(user_id, url))
+                
+            except Exception as premium_error:
+                logging.error(f"❌ Ошибка обработки премиум задачи: {premium_error}")
+                return
+        
+        # Затем обрабатываем обычную очередь
         if REGULAR_QUEUE:
             try:
                 task_info = REGULAR_QUEUE.popleft()
@@ -806,11 +744,10 @@ async def process_download_queue_fast():
                     logging.error("❌ process_download_queue_fast: отсутствуют обязательные параметры")
                     return
                     
-                logging.info(f"📱 Обрабатываю упрощенную задачу для пользователя {user_id}")
+                logging.info(f"📱 Обрабатываю обычную задачу для пользователя {user_id}")
                 
-                # Упрощенная обработка - только логирование
-                # Тяжелые операции убраны для экономии CPU
-                logging.info(f"✅ Упрощенная обработка завершена для пользователя {user_id}")
+                # Запускаем загрузку метаданных в фоне
+                asyncio.create_task(download_track_from_url(user_id, url))
                 
             except Exception as regular_error:
                 logging.error(f"❌ Ошибка обработки обычной задачи: {regular_error}")
@@ -1769,75 +1706,7 @@ async def send_welcome(message: types.Message):
         except Exception as e:
             # Если не удалось отправить фото, отправляем обычное сообщение
             logging.error(f"❌ Ошибка отправки фото: {e}")
-            await message.answer("🐻 Привет! Я бот для поиска и скачивания музыки с YouTube.\n\n💡 Для обновления метаданных треков используйте /update_metadata", reply_markup=main_menu)
-
-@dp.message(Command("update_metadata"))
-async def update_track_metadata(message: types.Message):
-    """Обновляет метаданные треков пользователя (опционально)"""
-    user_id = str(message.from_user.id)
-    
-    try:
-        if user_id not in user_tracks or not user_tracks[user_id]:
-            await message.answer("❌ У вас нет сохраненных треков для обновления.")
-            return
-        
-        # Показываем сообщение о начале обновления
-        update_msg = await message.answer("🔄 Обновляю метаданные треков... Это может занять время.")
-        
-        updated_count = 0
-        total_tracks = len(user_tracks[user_id])
-        
-        for i, track in enumerate(user_tracks[user_id]):
-            try:
-                if track.get('url') and (track.get('title') == 'Трек добавлен (обновить /update_metadata)' or track.get('needs_update')):
-                    # Обновляем только треки с базовыми метаданными
-                    logging.info(f"🔄 Обновляю метаданные трека {i+1}/{total_tracks} для пользователя {user_id}")
-                    
-                    # Запускаем обновление в фоне
-                    asyncio.create_task(update_single_track_metadata(user_id, track, i))
-                    updated_count += 1
-                    
-                    # Небольшая пауза между обновлениями для экономии CPU
-                    await asyncio.sleep(0.5)
-                    
-            except Exception as track_error:
-                logging.error(f"❌ Ошибка обновления трека {i+1}: {track_error}")
-                continue
-        
-        if updated_count > 0:
-            await update_msg.edit_text(f"✅ Запущено обновление {updated_count} треков в фоне.\n\n💡 Метаданные будут обновляться постепенно для экономии ресурсов.")
-        else:
-            await update_msg.edit_text("ℹ️ Все треки уже имеют актуальные метаданные.")
-            
-    except Exception as e:
-        logging.error(f"❌ Ошибка обновления метаданных: {e}")
-        await message.answer("❌ Произошла ошибка при обновлении метаданных.")
-
-async def update_single_track_metadata(user_id: str, track: dict, track_index: int):
-    """Обновляет метаданные одного трека в фоне"""
-    try:
-        url = track.get('url')
-        if not url:
-            return
-        
-        # Обновляем метаданные
-        updated_metadata = await download_track_from_url(user_id, url)
-        if updated_metadata:
-            # Обновляем трек в списке пользователя
-            if user_id in user_tracks and track_index < len(user_tracks[user_id]):
-                # Удаляем старый трек и добавляем обновленный
-                old_track = user_tracks[user_id].pop(track_index)
-                logging.info(f"✅ Метаданные трека {track_index+1} обновлены для пользователя {user_id}")
-                
-                # Сохраняем обновленный список
-                save_tracks()
-            else:
-                logging.warning(f"⚠️ Трек {track_index+1} не найден в списке пользователя {user_id}")
-        else:
-            logging.warning(f"⚠️ Не удалось обновить метаданные трека {track_index+1} для пользователя {user_id}")
-            
-    except Exception as e:
-        logging.error(f"❌ Ошибка обновления трека {track_index+1}: {e}")
+            await message.answer("🐻 Привет! Я бот для поиска и скачивания музыки с YouTube.", reply_markup=main_menu)
 
 @dp.callback_query(F.data == "by_artist")
 async def by_artist_section(callback: types.CallbackQuery, state: FSMContext):
@@ -2781,14 +2650,13 @@ async def download_track(callback: types.CallbackQuery):
             
         url = f"https://www.youtube.com/watch?v={video_id}"
         
-        # Мгновенно добавляем трек в плейлист
-        success = await add_track_instant(user_id, url)
+        # Мгновенно отвечаем пользователю
+        await callback.answer("✅ Трек будет добавлен в плейлист", show_alert=True)
         
-        if success:
-            # Показываем мгновенный ответ
-            await callback.answer("✅ Трек добавлен в Мою музыку!", show_alert=True)
-        else:
-            await callback.answer("❌ Ошибка добавления трека", show_alert=True)
+        # Запускаем фоновую загрузку метаданных и добавление в плейлист
+        asyncio.create_task(add_track_with_delay(user_id, url, 10))
+        
+        logging.info(f"🚀 Запущена фоновая загрузка трека для пользователя {user_id}")
         
     except ValueError as e:
         await callback.answer("❌ Ошибка ID видео.", show_alert=True)
@@ -2819,14 +2687,13 @@ async def download_soundcloud_from_search(callback: types.CallbackQuery):
         import urllib.parse
         url = urllib.parse.unquote(encoded_url)
         
-        # Мгновенно добавляем трек в плейлист
-        success = await add_track_instant(user_id, url)
+        # Мгновенно отвечаем пользователю
+        await callback.answer("✅ Трек будет добавлен в плейлист", show_alert=True)
         
-        if success:
-            # Показываем мгновенный ответ
-            await callback.answer("✅ Трек добавлен в Мою музыку!", show_alert=True)
-        else:
-            await callback.answer("❌ Ошибка добавления трека", show_alert=True)
+        # Запускаем фоновую загрузку метаданных и добавление в плейлист
+        asyncio.create_task(add_track_with_delay(user_id, url, 10))
+        
+        logging.info(f"🚀 Запущена фоновая загрузка SoundCloud трека для пользователя {user_id}")
         
     except Exception as e:
         await callback.answer("❌ Произошла ошибка при запуске загрузки.", show_alert=True)
@@ -5465,6 +5332,46 @@ async def download_track_from_url_with_priority(user_id: str, url: str, is_premi
     except Exception as e:
         logging.exception(f"❌ Ошибка скачивания трека {url} для пользователя {user_id}: {e}")
         return None
+
+# === ФУНКЦИИ ДЛЯ ДОБАВЛЕНИЯ ТРЕКОВ ===
+async def add_track_with_delay(user_id: str, url: str, delay_seconds: int = 10):
+    """Добавляет трек в плейлист с задержкой после фоновой загрузки метаданных"""
+    try:
+        logging.info(f"🔄 Начинаю фоновую загрузку трека для пользователя {user_id}")
+        
+        # 1. Загружаем метаданные трека (не блокирует UI)
+        track_metadata = await download_track_from_url(user_id, url)
+        
+        if track_metadata:
+            logging.info(f"✅ Метаданные загружены для пользователя {user_id}")
+            
+            # 2. Ждем указанную задержку
+            logging.info(f"⏱️ Ожидаю {delay_seconds} секунд перед добавлением в плейлист")
+            await asyncio.sleep(delay_seconds)
+            
+            # 3. Добавляем трек в плейлист пользователя
+            if user_id not in user_tracks:
+                user_tracks[user_id] = []
+            
+            # Проверяем, не добавлен ли уже трек
+            track_exists = any(track.get('url') == url for track in user_tracks[user_id])
+            
+            if not track_exists:
+                user_tracks[user_id].append(track_metadata)
+                
+                # Сохраняем в файл
+                save_success = save_tracks()
+                if save_success:
+                    logging.info(f"✅ Трек успешно добавлен в плейлист для пользователя {user_id}")
+                else:
+                    logging.error(f"❌ Ошибка сохранения трека в файл для пользователя {user_id}")
+            else:
+                logging.info(f"ℹ️ Трек уже существует в плейлисте пользователя {user_id}")
+        else:
+            logging.error(f"❌ Не удалось загрузить метаданные трека для пользователя {user_id}")
+            
+    except Exception as e:
+        logging.error(f"❌ Ошибка в add_track_with_delay для пользователя {user_id}: {e}")
 
 # === ФУНКЦИИ ДЛЯ WEBHOOK ===
 async def process_webhook_update(update_data: dict):
