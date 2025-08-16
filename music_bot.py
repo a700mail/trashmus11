@@ -58,10 +58,11 @@ SEARCH_CACHE_FILE = os.path.join(os.path.dirname(__file__), "search_cache.json")
 # === ПЛАТЕЖНЫЕ СИСТЕМЫ ОТКЛЮЧЕНЫ ===
 # Все платежные функции удалены для упрощения и оптимизации
 
-# === НАСТРОЙКИ АВТОМАТИЧЕСКОЙ ОЧИСТКИ ===
-AUTO_CLEANUP_ENABLED = True  # Включить/выключить автоматическую очистку
-AUTO_CLEANUP_DELAY = 1.0  # Задержка в секундах перед удалением файла после отправки
+# === НАСТРОЙКИ ПЕРИОДИЧЕСКОЙ ОЧИСТКИ ===
+AUTO_CLEANUP_ENABLED = True  # Включить/выключить периодическую очистку MP3 файлов
 CLEANUP_LOGGING = True  # Логирование операций очистки
+MP3_CLEANUP_INTERVAL = 600  # 🔧 Интервал очистки MP3 файлов (10 минут)
+MP3_FILE_MAX_AGE = 15  # 🔧 Максимальный возраст MP3 файла в минутах перед удалением
 
 # === РАСШИРЕННОЕ КЕШИРОВАНИЕ ===
 from functools import lru_cache
@@ -454,6 +455,9 @@ def start_background_tasks():
         # Запускаем новую задачу очистки кеша
         asyncio.create_task(cache_cleanup_task())
         
+        # 🔧 ИСПРАВЛЕНИЕ: Запускаем периодическую очистку MP3 файлов
+        asyncio.create_task(periodic_mp3_cleanup())
+        
         # Запускаем мониторинг статуса задач
         asyncio.create_task(log_task_status())
         
@@ -553,7 +557,37 @@ def is_admin(user_id: str, username: str = None) -> bool:
         logging.error(f"❌ Ошибка проверки админских прав: {e}")
         return False
 
+async def save_json_async(path, data):
+    """🔧 Асинхронное сохранение JSON - не блокирует event loop"""
+    if not path:
+        logging.error("❌ save_json_async: путь не указан")
+        return False
+        
+    try:
+        # Создаем директорию, если она не существует и путь не пустой
+        dir_path = os.path.dirname(path)
+        if dir_path:
+            os.makedirs(dir_path, exist_ok=True)
+        
+        # Используем aiofiles для асинхронной записи
+        try:
+            import aiofiles
+            async with aiofiles.open(path, "w", encoding="utf-8") as f:
+                await f.write(json.dumps(data, ensure_ascii=False, indent=2))
+        except ImportError:
+            # Fallback на синхронную запись если aiofiles не установлен
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        
+        logging.info(f"✅ Данные успешно сохранены в {path}")
+        return True
+        
+    except Exception as e:
+        logging.error(f"❌ Ошибка сохранения {path}: {e}")
+        return False
+
 def save_json(path, data):
+    """🔧 Синхронная версия для обратной совместимости"""
     if not path:
         logging.error("❌ save_json: путь не указан")
         return False
@@ -626,7 +660,30 @@ REGULAR_QUEUE = deque()
 
 artist_facts = load_json(ARTIST_FACTS_FILE, {"facts": {}})
 
+async def save_tracks_async():
+    """🔧 Асинхронное сохранение треков - не блокирует event loop"""
+    global user_tracks
+    try:
+        # Проверяем, что user_tracks не None
+        if user_tracks is None:
+            logging.warning("⚠️ save_tracks_async: user_tracks был None, инициализируем пустым словарем")
+            user_tracks = {}
+        
+        # Проверяем, что user_tracks является словарем
+        if not isinstance(user_tracks, dict):
+            logging.error(f"❌ save_tracks_async: user_tracks не является словарем: {type(user_tracks)}")
+            return False
+        
+        await save_json_async(TRACKS_FILE, user_tracks)
+        logging.info("✅ Треки успешно сохранены асинхронно")
+        return True
+        
+    except Exception as e:
+        logging.error(f"❌ Ошибка асинхронного сохранения треков: {e}")
+        return False
+
 def save_tracks():
+    """🔧 Синхронная версия для обратной совместимости"""
     global user_tracks
     try:
         # Проверяем, что user_tracks не None
@@ -844,59 +901,12 @@ def check_cookies_file():
 check_cookies_file()
 
 # === ФУНКЦИИ АВТОМАТИЧЕСКОЙ ОЧИСТКИ MP3 ===
-async def auto_cleanup_file(file_path: str, delay: float = None, is_collection_track: bool = False, user_id: str = None):
-    """
-    Автоматически удаляет файл после указанной задержки.
-    Используется для очистки MP3 файлов после отправки пользователю.
-    
-    Args:
-        file_path: Путь к файлу для удаления
-        delay: Задержка перед удалением (в секундах)
-        is_collection_track: True если это трек из коллекции пользователя (НЕ удаляем)
-        user_id: ID пользователя для проверки премиум статуса
-    """
-    if not AUTO_CLEANUP_ENABLED:
-        if CLEANUP_LOGGING:
-            logging.info(f"🧹 Автоматическая очистка отключена для файла: {file_path}")
-        return False
-    
-    # Премиум система отключена
-    is_premium = False
-    
-    # НЕ удаляем файлы из коллекции пользователей ИЛИ файлы премиум пользователей
-    if is_collection_track or is_premium:
-        if CLEANUP_LOGGING:
-            status = "коллекции" if is_collection_track else "премиум пользователя"
-            logging.info(f"🧹 Файл из {status} НЕ будет удален: {file_path}")
-        return False
-    
-    try:
-        # Проверяем входные параметры
-        if not file_path or not isinstance(file_path, str):
-            if CLEANUP_LOGGING:
-                logging.warning(f"⚠️ auto_cleanup_file: некорректный путь к файлу: {file_path}")
-            return False
-        
-        # Проверяем существование файла
-        if not os.path.exists(file_path):
-            if CLEANUP_LOGGING:
-                logging.warning(f"⚠️ auto_cleanup_file: файл не существует: {file_path}")
-            return False
-        
-        # Используем указанную задержку или значение по умолчанию
-        cleanup_delay = delay if delay is not None else AUTO_CLEANUP_DELAY
-        
-        if CLEANUP_LOGGING:
-            logging.info(f"🧹 Запланирована автоматическая очистка файла {file_path} через {cleanup_delay} сек.")
-        
-        # Запускаем асинхронную задачу очистки
-        asyncio.create_task(delayed_file_cleanup(file_path, cleanup_delay))
-        return True
-        
-    except Exception as e:
-        if CLEANUP_LOGGING:
-            logging.error(f"❌ Ошибка планирования автоматической очистки файла {file_path}: {e}")
-        return False
+# 🔧 ИСПРАВЛЕНИЕ: Функция auto_cleanup_file удалена
+# Теперь MP3 файлы удаляются периодически раз в 10 минут через periodic_mp3_cleanup()
+# Это устраняет лаги на 3-5 секунд при добавлении треков
+
+# 🔧 ИСПРАВЛЕНИЕ: Вспомогательная функция _background_cleanup_task удалена
+# Больше не нужна, так как автоудаление отдельных файлов отключено
 
 async def delayed_file_cleanup(file_path: str, delay: float):
     """
@@ -928,6 +938,72 @@ async def delayed_file_cleanup(file_path: str, delay: float):
     except Exception as e:
         if CLEANUP_LOGGING:
             logging.error(f"❌ Ошибка автоматической очистки файла {file_path}: {e}")
+
+async def periodic_mp3_cleanup():
+    """🔧 Периодическая очистка всех MP3 файлов раз в 10 минут"""
+    while True:
+        try:
+            await asyncio.sleep(MP3_CLEANUP_INTERVAL)  # Используем настройку
+            
+            if not AUTO_CLEANUP_ENABLED:
+                continue
+                
+            logging.info("🧹 Запуск периодической очистки MP3 файлов...")
+            
+            cache_dir = CACHE_DIR
+            if not os.path.exists(cache_dir):
+                logging.info("📁 Папка cache не существует, пропускаем очистку")
+                continue
+            
+            # Получаем список всех файлов в cache
+            files_to_remove = []
+            current_time = time.time()
+            
+            for filename in os.listdir(cache_dir):
+                file_path = os.path.join(cache_dir, filename)
+                
+                # Проверяем только MP3 файлы
+                if filename.lower().endswith('.mp3'):
+                    try:
+                        # Получаем время создания файла
+                        file_creation_time = os.path.getctime(file_path)
+                        file_age_minutes = (current_time - file_creation_time) / 60
+                        
+                        # Удаляем файлы старше указанного возраста
+                        if file_age_minutes > MP3_FILE_MAX_AGE:
+                            files_to_remove.append((file_path, file_age_minutes))
+                            
+                    except Exception as e:
+                        logging.warning(f"⚠️ Не удалось проверить файл {filename}: {e}")
+            
+            # Удаляем старые MP3 файлы
+            removed_count = 0
+            total_size_mb = 0
+            
+            for file_path, age_minutes in files_to_remove:
+                try:
+                    # Получаем размер файла перед удалением
+                    file_size = os.path.getsize(file_path)
+                    file_size_mb = file_size / (1024 * 1024)
+                    total_size_mb += file_size_mb
+                    
+                    # Удаляем файл
+                    os.remove(file_path)
+                    removed_count += 1
+                    
+                    logging.info(f"🧹 Удален старый MP3 файл: {os.path.basename(file_path)} (возраст: {age_minutes:.1f} мин, размер: {file_size_mb:.2f} MB)")
+                    
+                except Exception as e:
+                    logging.error(f"❌ Ошибка удаления файла {file_path}: {e}")
+            
+            if removed_count > 0:
+                logging.info(f"🧹 Периодическая очистка завершена: удалено {removed_count} MP3 файлов, освобождено {total_size_mb:.2f} MB")
+            else:
+                logging.info("🧹 Периодическая очистка: старых MP3 файлов не найдено")
+                
+        except Exception as e:
+            logging.error(f"❌ Ошибка в периодической очистке MP3: {e}")
+            await asyncio.sleep(60)  # Пауза при ошибке
 
 async def cleanup_orphaned_files(batch_size: int = 200):
     """
@@ -1505,7 +1581,8 @@ async def download_track_from_url(user_id, url):
                 user_tracks[str(user_id)] = []
                 
             user_tracks[str(user_id)].append(cached_info)
-            save_tracks()
+            # 🔧 ИСПРАВЛЕНИЕ: Сохраняем в фоне без блокировки
+            asyncio.create_task(save_tracks_async())
             
             logging.info(f"✅ Метаданные трека из кэша успешно добавлены для пользователя {user_id}: {cached_info.get('title', 'Неизвестный трек')}")
             return True
@@ -1572,7 +1649,8 @@ async def download_track_from_url(user_id, url):
                     user_tracks[str(user_id)] = []
                     
                 user_tracks[str(user_id)].append(track_info)
-                save_tracks()
+                # 🔧 ИСПРАВЛЕНИЕ: Сохраняем в фоне без блокировки
+                asyncio.create_task(save_tracks_async())
                 
                 logging.info(f"✅ Метаданные трека успешно сохранены для пользователя {user_id}: {title}")
                 return True
@@ -3696,7 +3774,8 @@ async def delete_track(callback: types.CallbackQuery):
         
         # Удаляем трек из списка
         tracks.pop(idx)
-        save_tracks()
+        # 🔧 ИСПРАВЛЕНИЕ: Сохраняем в фоне без блокировки
+        asyncio.create_task(save_tracks_async())
         logging.info(f"✅ Трек удален из списка: {title}")
         
         # Обновляем интерфейс - возвращаемся к списку треков
@@ -5206,7 +5285,8 @@ async def add_to_download_queue(user_id: str, url: str, is_premium: bool = False
                 user_tracks[str(user_id)] = []
                 
             user_tracks[str(user_id)].append(cached_info)
-            save_tracks()
+            # 🔧 ИСПРАВЛЕНИЕ: Сохраняем в фоне без блокировки
+            asyncio.create_task(save_tracks_async())
             
             logging.info(f"✅ Метаданные трека из кэша успешно добавлены для пользователя {user_id}")
             return True
@@ -5348,15 +5428,12 @@ async def add_track_ghost(user_id: str, url: str):
         
         user_tracks[user_id].append(ghost_track)
         
-        # Сохраняем в файл
-        save_success = save_tracks()
-        if save_success:
-            logging.info(f"👻 Трек-призрак добавлен для пользователя {user_id}")
-            
-            # Запускаем фоновое обновление метаданных
-            asyncio.create_task(update_ghost_track_metadata(user_id, url, len(user_tracks[user_id]) - 1))
-        else:
-            logging.error(f"❌ Ошибка сохранения трека-призрака для пользователя {user_id}")
+        # 🔧 ИСПРАВЛЕНИЕ: Сохраняем в фоне без блокировки
+        asyncio.create_task(save_tracks_async())
+        logging.info(f"👻 Трек-призрак добавлен для пользователя {user_id}")
+        
+        # Запускаем фоновое обновление метаданных
+        asyncio.create_task(update_ghost_track_metadata(user_id, url, len(user_tracks[user_id]) - 1))
             
     except Exception as e:
         logging.error(f"❌ Ошибка добавления трека-призрака для пользователя {user_id}: {e}")
@@ -5375,8 +5452,8 @@ async def update_ghost_track_metadata(user_id: str, url: str, track_index: int):
                 old_track = user_tracks[user_id].pop(track_index)
                 logging.info(f"✅ Метаданные трека-призрака обновлены для пользователя {user_id}")
                 
-                # Сохраняем обновленный список
-                save_tracks()
+                # 🔧 ИСПРАВЛЕНИЕ: Сохраняем в фоне без блокировки
+                asyncio.create_task(save_tracks_async())
             else:
                 logging.warning(f"⚠️ Трек-призрак {track_index} не найден для пользователя {user_id}")
         else:

@@ -18,6 +18,7 @@ from aiogram.fsm.context import FSMContext
 import re
 from functools import partial, lru_cache
 import aiohttp
+import aiofiles  # Добавляем для асинхронной работы с файлами
 from datetime import datetime, timedelta
 from collections import deque
 from asyncio import PriorityQueue
