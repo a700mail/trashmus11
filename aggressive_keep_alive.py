@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Keep Alive для Render - предотвращает засыпание сервиса
+МАКСИМАЛЬНО АГРЕССИВНЫЙ Keep Alive для Render
+Пингует каждые 30 секунд для предотвращения засыпания
 """
 
 import os
@@ -16,7 +17,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-class RenderKeepAlive:
+class AggressiveRenderKeepAlive:
     def __init__(self):
         self.ping_count = 0
         self.error_count = 0
@@ -28,7 +29,8 @@ class RenderKeepAlive:
             # Fallback для локального тестирования
             self.service_url = "http://localhost:10000"
         
-        logger.info(f"🚀 Render Keep Alive инициализирован для: {self.service_url}")
+        logger.info(f"🚀 АГРЕССИВНЫЙ Render Keep Alive инициализирован для: {self.service_url}")
+        logger.info(f"⚡ Пинги каждые 30 секунд для максимальной активности!")
     
     def ping_external_services(self):
         """Пингует внешние сервисы для активности"""
@@ -36,20 +38,25 @@ class RenderKeepAlive:
             "https://httpbin.org/get",
             "https://api.github.com",
             "https://www.google.com",
-            "https://www.cloudflare.com"
+            "https://www.cloudflare.com",
+            "https://httpstat.us/200",
+            "https://jsonplaceholder.typicode.com/posts/1"
         ]
         
+        success_count = 0
         for service in external_services:
             try:
                 response = requests.get(service, timeout=5)
                 if response.status_code in [200, 301, 302]:
                     logger.info(f"🌐 Внешний ping успешен: {service}")
-                    return True
+                    success_count += 1
+                    if success_count >= 2:  # Достаточно 2 успешных пинга
+                        return True
             except Exception as e:
                 logger.debug(f"⚠️ Ping {service} не удался: {e}")
                 continue
         
-        return False
+        return success_count >= 2
     
     def ping_own_service(self):
         """Пингует собственный сервис"""
@@ -86,8 +93,9 @@ class RenderKeepAlive:
             return False
     
     def run_keep_alive(self):
-        """Основной цикл keep alive - АГРЕССИВНО каждые 30 секунд"""
-        logger.info("💓 Агрессивный Render Keep Alive запущен (каждые 30 сек)")
+        """Основной цикл keep alive - МАКСИМАЛЬНО АГРЕССИВНО каждые 30 секунд"""
+        logger.info("💓 МАКСИМАЛЬНО АГРЕССИВНЫЙ Render Keep Alive запущен")
+        logger.info("⚡ Пинги каждые 30 секунд для предотвращения засыпания Render!")
         
         while True:
             try:
@@ -121,8 +129,8 @@ class RenderKeepAlive:
                 minutes = int((uptime % 3600) // 60)
                 logger.info(f"📊 Uptime: {hours}ч {minutes}м | Ping: {self.ping_count} | Ошибок: {self.error_count}")
                 
-                # 6. Ждем до следующего ping - АГРЕССИВНО каждые 30 секунд!
-                # Это предотвращает засыпание Render, но может увеличить потребление ресурсов
+                # 6. Ждем до следующего ping - МАКСИМАЛЬНО АГРЕССИВНО каждые 30 секунд!
+                # Это гарантированно предотвратит засыпание Render
                 sleep_time = 30  # 30 секунд для максимальной активности
                 logger.info(f"⏳ Следующий ping через {sleep_time} секунд")
                 
@@ -145,12 +153,12 @@ class RenderKeepAlive:
                 else:
                     time.sleep(60)  # 1 минута
         
-        logger.info("✅ Агрессивный Render Keep Alive завершен")
+        logger.info("✅ МАКСИМАЛЬНО АГРЕССИВНЫЙ Render Keep Alive завершен")
 
 def main():
     """Главная функция"""
-    logger.info("🚀 Запуск Render Keep Alive")
-    logger.info("=" * 50)
+    logger.info("🚀 Запуск МАКСИМАЛЬНО АГРЕССИВНОГО Render Keep Alive")
+    logger.info("=" * 70)
     
     # Проверяем, что мы в Render
     if os.environ.get('RENDER'):
@@ -160,8 +168,12 @@ def main():
     else:
         logger.info("💻 Локальный запуск - используем тестовые настройки")
     
+    logger.info("⚡ ВНИМАНИЕ: Этот keep alive пингует каждые 30 секунд!")
+    logger.info("⚡ Это предотвратит засыпание Render, но увеличит потребление ресурсов")
+    logger.info("⚡ Рекомендуется только для критически важных сервисов")
+    
     # Создаем и запускаем keep alive
-    keep_alive = RenderKeepAlive()
+    keep_alive = AggressiveRenderKeepAlive()
     
     try:
         keep_alive.run_keep_alive()

@@ -389,10 +389,10 @@ def method_not_allowed(error):
     }), 405
 
 def render_keep_alive():
-    """Упрощенный keep alive для Render - только внешние пинги"""
+    """Агрессивный keep alive для Render - каждые 30 секунд для предотвращения засыпания"""
     global bot_running, bot_thread, shutdown_event
     
-    logger.info("🚀 Render Keep Alive запущен")
+    logger.info("🚀 Агрессивный Render Keep Alive запущен (каждые 30 сек)")
     
     # Счетчики для мониторинга
     ping_count = 0
@@ -418,17 +418,23 @@ def render_keep_alive():
                 external_services = [
                     "https://httpbin.org/get",
                     "https://api.github.com",
-                    "https://www.google.com"
+                    "https://www.google.com",
+                    "https://www.cloudflare.com"
                 ]
                 
+                external_success = False
                 for service in external_services:
                     try:
                         response = requests.get(service, timeout=5)
                         if response.status_code in [200, 301, 302]:
                             logger.info(f"🌐 [{current_time}] Внешний ping успешен: {service}")
+                            external_success = True
                             break
                     except Exception:
                         continue
+                
+                if not external_success:
+                    logger.warning(f"⚠️ [{current_time}] Все внешние пинги не удались")
                         
             except Exception as e:
                 logger.warning(f"⚠️ [{current_time}] Внешний ping не удался: {e}")
@@ -463,11 +469,9 @@ def render_keep_alive():
                 logger.info("📴 Keep alive получил сигнал shutdown, завершаю работу")
                 break
             
-            # 6. Ждем до следующего keep alive
-            # Для Render оптимально каждые 14 минут (840 секунд)
-            # Это предотвращает засыпание, но не перегружает сервис
-            sleep_time = 840  # 14 минут
-            logger.info(f"⏳ [{current_time}] Следующий keep alive через {sleep_time//60} минут")
+            # 6. Ждем до следующего keep alive - АГРЕССИВНО каждые 30 секунд!
+            sleep_time = 30  # 30 секунд для предотвращения засыпания Render
+            logger.info(f"⏳ [{current_time}] Следующий keep alive через {sleep_time} секунд")
             
             # Разбиваем ожидание на части для возможности быстрого завершения
             for _ in range(sleep_time):
@@ -480,20 +484,20 @@ def render_keep_alive():
             current_time = time.strftime("%H:%M:%S")
             logger.error(f"❌ [{current_time}] Ошибка в keep alive #{error_count}: {e}")
             
-            # При накоплении ошибок увеличиваем интервал
+            # При накоплении ошибок увеличиваем интервал, но не слишком сильно
             if error_count > 5:
-                logger.warning(f"⚠️ [{current_time}] Много ошибок, увеличиваю интервал до 30 минут")
-                for _ in range(1800):  # 30 минут
+                logger.warning(f"⚠️ [{current_time}] Много ошибок, увеличиваю интервал до 2 минут")
+                for _ in range(120):  # 2 минуты
                     if shutdown_event.is_set():
                         break
                     time.sleep(1)
             else:
-                for _ in range(300):  # 5 минут
+                for _ in range(60):  # 1 минута
                     if shutdown_event.is_set():
                         break
                     time.sleep(1)
     
-    logger.info("✅ Render Keep Alive завершен")
+    logger.info("✅ Агрессивный Render Keep Alive завершен")
 
 if __name__ == '__main__':
     # Записываем время старта приложения
