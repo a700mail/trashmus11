@@ -2644,13 +2644,13 @@ async def download_track(callback: types.CallbackQuery):
             
         url = f"https://www.youtube.com/watch?v={video_id}"
         
-        # Показываем сообщение о сохранении на 7 секунд (без кнопки закрытия)
-        await callback.answer("⏳ Трек сохраняется в плейлист...", show_alert=False)
+        # МГНОВЕННО добавляем трек в плейлист как "призрак"
+        await add_track_ghost(user_id, url)
         
-        # Запускаем фоновую загрузку метаданных и добавление в плейлист
-        asyncio.create_task(add_track_with_delay(user_id, url, 7))
+        # Показываем мгновенный ответ
+        await callback.answer("✅ Трек добавлен в плейлист!", show_alert=False)
         
-        logging.info(f"🚀 Запущена фоновая загрузка трека для пользователя {user_id}")
+        logging.info(f"🚀 Трек мгновенно добавлен для пользователя {user_id}")
         
     except ValueError as e:
         await callback.answer("❌ Ошибка ID видео.", show_alert=True)
@@ -2681,13 +2681,13 @@ async def download_soundcloud_from_search(callback: types.CallbackQuery):
         import urllib.parse
         url = urllib.parse.unquote(encoded_url)
         
-        # Показываем сообщение о сохранении на 7 секунд (без кнопки закрытия)
-        await callback.answer("⏳ Трек сохраняется в плейлист...", show_alert=False)
+        # МГНОВЕННО добавляем трек в плейлист как "призрак"
+        await add_track_ghost(user_id, url)
         
-        # Запускаем фоновую загрузку метаданных и добавление в плейлист
-        asyncio.create_task(add_track_with_delay(user_id, url, 7))
+        # Показываем мгновенный ответ
+        await callback.answer("✅ Трек добавлен в плейлист!", show_alert=False)
         
-        logging.info(f"🚀 Запущена фоновая загрузка SoundCloud трека для пользователя {user_id}")
+        logging.info(f"🚀 SoundCloud трек мгновенно добавлен для пользователя {user_id}")
         
     except Exception as e:
         await callback.answer("❌ Произошла ошибка при запуске загрузки.", show_alert=True)
@@ -3142,39 +3142,42 @@ async def send_tracks_as_audio(user_id: str, tracks: list, status_msg: types.Mes
         success_count = 0
         for i, track in enumerate(tracks):
             try:
-                if track and isinstance(track, dict) and track.get('url'):
-                    # Скачиваем трек во временную папку
-                    temp_file_path = await download_track_to_temp(user_id, track['url'], track.get('title', 'Неизвестный трек'))
-                    
-                    if temp_file_path and os.path.exists(temp_file_path):
-                        # Отправляем аудиофайл
-                        await bot.send_audio(
+                if track and isinstance(track, dict):
+                    # Проверяем, является ли трек "призраком"
+                    if track.get('is_ghost'):
+                        # Для треков-призраков показываем только метаданные
+                        await bot.send_message(
                             chat_id=user_id,
-                            audio=types.FSInputFile(temp_file_path),
-                            title=track.get('title', 'Неизвестный трек'),
-                            performer=track.get('uploader', 'Неизвестный исполнитель')
+                            text=f"👻 **{track.get('title', 'Загружается...')}**\n\n"
+                                 f"⏳ Метаданные загружаются в фоне...\n"
+                                 f"💡 Трек будет доступен для скачивания позже"
                         )
-                        
-                        # Удаляем временный файл
-                        await delete_temp_file(temp_file_path)
-                        
                         success_count += 1
-                        logging.info(f"✅ Трек {i+1}/{len(tracks)} отправлен: {track.get('title', 'Неизвестный трек')}")
-                        
-                        # Удаляем статусное сообщение после первого трека
-                        if i == 0 and status_msg:
-                            try:
-                                await status_msg.delete()
-                                logging.info(f"🎯 Статусное сообщение удалено после первого трека")
-                            except Exception as delete_error:
-                                logging.warning(f"⚠️ Не удалось удалить статусное сообщение: {delete_error}")
-                        
-                        # Небольшая задержка между отправками
-                        await asyncio.sleep(0.5)
+                        logging.info(f"👻 Трек-призрак {i+1}/{len(tracks)} показан: {track.get('title', 'Загружается...')}")
+                    elif track.get('url'):
+                        # Для обычных треков - быстрая отправка без скачивания
+                        await bot.send_message(
+                            chat_id=user_id,
+                            text=f"🎵 **{track.get('title', 'Неизвестный трек')}**\n\n"
+                                 f"👤 {track.get('uploader', 'Неизвестный исполнитель')}\n"
+                                 f"⏱️ {format_duration(track.get('duration', 0))}\n\n"
+                                 f"💡 Используйте поиск для скачивания аудио"
+                        )
+                        success_count += 1
+                        logging.info(f"✅ Трек {i+1}/{len(tracks)} показан: {track.get('title', 'Неизвестный трек')}")
                     else:
-                        logging.warning(f"⚠️ Не удалось скачать трек {i+1}: {track.get('title', 'Неизвестный трек')}")
-                else:
-                    logging.warning(f"⚠️ Некорректный трек {i+1}: {track}")
+                        logging.warning(f"⚠️ Некорректный трек {i+1}: {track}")
+                    
+                    # Удаляем статусное сообщение после первого трека
+                    if i == 0 and status_msg:
+                        try:
+                            await status_msg.delete()
+                            logging.info(f"🎯 Статусное сообщение удалено после первого трека")
+                        except Exception as delete_error:
+                            logging.warning(f"⚠️ Не удалось удалить статусное сообщение: {delete_error}")
+                    
+                    # Минимальная задержка между отправками
+                    await asyncio.sleep(0.1)
                     
             except Exception as e:
                 logging.error(f"❌ Ошибка отправки трека {i+1}: {e}")
@@ -5324,6 +5327,64 @@ async def download_track_from_url_with_priority(user_id: str, url: str, is_premi
         return None
 
 # === ФУНКЦИИ ДЛЯ ДОБАВЛЕНИЯ ТРЕКОВ ===
+async def add_track_ghost(user_id: str, url: str):
+    """Мгновенно добавляет трек в плейлист как "призрак" с базовыми данными"""
+    try:
+        # Создаем базовые метаданные для мгновенного добавления
+        ghost_track = {
+            'id': f"ghost_{int(time.time())}",
+            'title': 'Загружается...',
+            'duration': 0,
+            'url': url,
+            'source': 'yt' if 'youtube.com' in url or 'youtu.be' in url else 'sc',
+            'timestamp': time.time(),
+            'is_ghost': True,  # Флаг что это "призрак"
+            'needs_update': True
+        }
+        
+        # Добавляем в user_tracks
+        if user_id not in user_tracks:
+            user_tracks[user_id] = []
+        
+        user_tracks[user_id].append(ghost_track)
+        
+        # Сохраняем в файл
+        save_success = save_tracks()
+        if save_success:
+            logging.info(f"👻 Трек-призрак добавлен для пользователя {user_id}")
+            
+            # Запускаем фоновое обновление метаданных
+            asyncio.create_task(update_ghost_track_metadata(user_id, url, len(user_tracks[user_id]) - 1))
+        else:
+            logging.error(f"❌ Ошибка сохранения трека-призрака для пользователя {user_id}")
+            
+    except Exception as e:
+        logging.error(f"❌ Ошибка добавления трека-призрака для пользователя {user_id}: {e}")
+
+async def update_ghost_track_metadata(user_id: str, url: str, track_index: int):
+    """Обновляет метаданные трека-призрака в фоне"""
+    try:
+        logging.info(f"🔄 Обновляю метаданные трека-призрака для пользователя {user_id}")
+        
+        # Загружаем метаданные в фоне
+        success = await download_track_from_url(user_id, url)
+        
+        if success:
+            # Удаляем старый трек-призрак и добавляем обновленный
+            if user_id in user_tracks and track_index < len(user_tracks[user_id]):
+                old_track = user_tracks[user_id].pop(track_index)
+                logging.info(f"✅ Метаданные трека-призрака обновлены для пользователя {user_id}")
+                
+                # Сохраняем обновленный список
+                save_tracks()
+            else:
+                logging.warning(f"⚠️ Трек-призрак {track_index} не найден для пользователя {user_id}")
+        else:
+            logging.warning(f"⚠️ Не удалось обновить метаданные трека-призрака для пользователя {user_id}")
+            
+    except Exception as e:
+        logging.error(f"❌ Ошибка обновления трека-призрака для пользователя {user_id}: {e}")
+
 async def add_track_with_delay(user_id: str, url: str, delay_seconds: int = 10):
     """Добавляет трек в плейлист с задержкой после фоновой загрузки метаданных"""
     try:
